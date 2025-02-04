@@ -41,6 +41,7 @@
 // }
 
 // #[cfg(all(not(esp32s2), feature = "experimental"))]
+
 pub mod example {
     use std::sync::{Arc, Condvar, Mutex};
 
@@ -60,6 +61,10 @@ pub mod example {
     use esp_idf_svc::sys::{EspError, ESP_FAIL};
 
     use log::{info, warn};
+
+    unsafe extern "C" {
+        pub fn esp_clk_cpu_freq() -> i32;
+    }
 
     pub fn main() -> anyhow::Result<()> {
         esp_idf_svc::sys::link_patches();
@@ -97,13 +102,18 @@ pub mod example {
 
         let mut ind_data = 0_u16;
 
+        let cpu_freq_mhz = unsafe { esp_clk_cpu_freq() };
+
+        info!("CPU frequency: {cpu_freq_mhz} MHz");
+
         loop {
             server.indicate(&ind_data.to_le_bytes())?;
             info!("Broadcasted indication: {ind_data}");
 
             ind_data = ind_data.wrapping_add(1);
+            info!("Test char: {:?}", server.test_char.as_slice());
 
-            FreeRtos::delay_ms(10000);
+            FreeRtos::delay_ms(1000);
         }
     }
 
@@ -151,6 +161,7 @@ pub mod example {
         gatts: ExEspGatts,
         state: Arc<Mutex<State>>,
         condvar: Arc<Condvar>,
+        test_char: Arc<Vec<u8>>,
     }
 
     impl ExampleServer {
@@ -160,6 +171,7 @@ pub mod example {
                 gatts,
                 state: Arc::new(Mutex::new(Default::default())),
                 condvar: Arc::new(Condvar::new()),
+                test_char: Arc::new(vec![0, 1, 0, 1]),
             }
         }
     }
@@ -444,6 +456,18 @@ pub mod example {
                     auto_rsp: AutoResponse::ByApp,
                 },
                 &[],
+            )?;
+
+            self.gatts.add_characteristic(
+                service_handle,
+                &GattCharacteristic {
+                    uuid: BtUuid::uuid128(0x503de214868246c4828fd59188888888),
+                    permissions: enum_set!(Permission::Write | Permission::Read),
+                    properties: enum_set!(Property::Read | Property::Write),
+                    max_len: 128,
+                    auto_rsp: AutoResponse::ByGatt,
+                },
+                self.test_char.as_slice(),
             )?;
 
             Ok(())
