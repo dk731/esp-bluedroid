@@ -1,5 +1,6 @@
 use anyhow;
 use esp_bluedroid::ble;
+use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::prelude::Peripherals;
 
 fn main() {
@@ -17,4 +18,13 @@ fn main() {
     };
 
     log::info!("Hello, world! 123");
+
+    if let Err(err) = ble.start_advertising() {
+        log::error!("Failed to start advertising: {:?}", err);
+        return;
+    }
+
+    loop {
+        FreeRtos::delay_ms(1000);
+    }
 }
