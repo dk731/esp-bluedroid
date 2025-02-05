@@ -32,25 +32,29 @@ impl<'d> Ble<'_> {
         let gap = EspBleGap::new(bt.clone())?;
         let gatts = EspGatts::new(bt.clone())?;
 
-        Ok(Ble {
+        let ble = Ble {
             _bt: bt,
             gap,
             gatts,
-        })
+        };
+
+        ble.init_event_handlers()?;
+
+        Ok(ble)
     }
 
-    pub fn init(&self) -> anyhow::Result<()> {
+    fn init_event_handlers(&self) -> anyhow::Result<()> {
         // Unsafe because we are using the `subscribe_nonstatic` method allowes to define a non-static callback.
         // This is safe because we have implemented proper unsubscribe logic in the `Drop` trait. for the `Ble` struct.
         unsafe {
             self.gap
                 .subscribe_nonstatic(|e| self.gap_events_callback(e))?;
+            log::debug!("Subscribed to GAP events");
 
             self.gatts
                 .subscribe_nonstatic(|e| self.gatts_events_callback(e.0, e.1))?;
+            log::debug!("Subscribed to GATTS events");
         }
-
-        self.gap.start_advertising()?;
 
         Ok(())
     }

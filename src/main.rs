@@ -24,6 +24,8 @@ fn main() {
         return;
     }
 
+    log::info!("Advertising started");
+
     loop {
         FreeRtos::delay_ms(1000);
     }
