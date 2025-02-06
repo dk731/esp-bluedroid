@@ -1,6 +1,9 @@
+use std::any::Any;
+use std::mem::{discriminant, Discriminant};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use esp_idf_svc as svc;
 use esp_idf_svc::bt::ble::gap::{self, BleGapEvent};
 use esp_idf_svc::bt::ble::gatt::server::GattsEvent;
@@ -16,10 +19,15 @@ use svc::nvs::EspDefaultNvsPartition;
 
 type ExtBtDriver<'d> = Arc<BtDriver<'d, svc::bt::Ble>>;
 
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct EnumKey<T>(Discriminant<T>);
+
 pub struct Ble<'d> {
     _bt: ExtBtDriver<'d>,
 
     gap: EspBleGap<'d, svc::bt::Ble, ExtBtDriver<'d>>,
+    gap_events: DashMap<EnumKey<BleGapEvent<'d>>, ()>,
+
     // gap_events: Rc<gap::BleGapEvent<'d, ExtBtDriver<'d>>>,
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
 }
@@ -36,6 +44,7 @@ impl<'d> Ble<'_> {
             _bt: bt,
             gap,
             gatts,
+            gap_events: DashMap::new(),
         };
 
         ble.init_event_handlers()?;
@@ -70,7 +79,9 @@ impl<'d> Ble<'_> {
     }
 
     fn gap_events_callback(&self, event: BleGapEvent<'_>) {
-        log::info!("Received GAP event: {:?}", event);
+        let qwe = discriminant(&event);
+
+        // log::info!("Received GAP event: {:?}", event);
         // match event {
         //     BleGapEvent::AdvertisingConfigured(bt_status) => todo!(),
         //     BleGapEvent::ScanResponseConfigured(bt_status) => todo!(),
