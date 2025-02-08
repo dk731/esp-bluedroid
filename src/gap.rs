@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     mem::{discriminant, Discriminant},
-    sync::{mpsc, Arc, RwLock},
+    sync::{mpsc, Arc, Mutex, RwLock},
     time::Duration,
 };
 
@@ -265,7 +265,7 @@ impl<'d> From<BleGapEvent<'d>> for GapEvent {
 
 pub struct Gap<'d> {
     gap: EspBleGap<'d, svc::bt::Ble, ExtBtDriver<'d>>,
-    gap_events: RwLock<HashMap<Discriminant<GapEvent>, mpsc::Sender<GapEvent>>>,
+    gap_events: Arc<Mutex<HashMap<Discriminant<GapEvent>, mpsc::Sender<GapEvent>>>>,
 }
 
 impl<'d> Gap<'d> {
@@ -274,7 +274,7 @@ impl<'d> Gap<'d> {
 
         let gap = Self {
             gap,
-            gap_events: RwLock::new(HashMap::new()),
+            gap_events: Arc::new(Mutex::new(HashMap::new())),
         };
 
         gap.init()?;
@@ -284,8 +284,16 @@ impl<'d> Gap<'d> {
     }
 
     pub fn init(&self) -> anyhow::Result<()> {
+        let qwe = self as *const _ as usize;
+        log::info!("Self in init call: 0x{:x}", qwe);
+
         unsafe {
-            self.gap.subscribe_nonstatic(|e| self.events_callback(e))?;
+            self.gap.subscribe_nonstatic(|e| {
+                let qwe = self as *const _ as usize;
+                log::info!("Self inside callback: 0x{:x}", qwe);
+
+                self.events_callback(e)
+            });
             log::debug!("Subscribed to GAP events");
         }
 
@@ -293,54 +301,62 @@ impl<'d> Gap<'d> {
     }
 
     fn events_callback(&self, event: BleGapEvent) {
-        log::debug!("GAP event: {:?}", event);
-        let event: GapEvent = event.into();
+        let rwlock_addr = &self.gap_events as *const _ as usize;
+        log::info!(
+            "gap_events RwLock address in events_callback: 0x{:x}",
+            rwlock_addr
+        );
 
-        match event {
-            GapEvent::AdvertisingStarted(_) => {
-                log::info!("Received GAP event, sending to channel: {:?}", event);
+        // match event {
+        //     GapEvent::AdvertisingStarted(_) => {
+        //         log::info!("Received GAP event, sending to channel: {:?}", event);
 
-                match self.gap_events.read() {
-                    Ok(gap_events) => {
-                        if let Some(tx) = gap_events.get(&discriminant(&event)) {
-                            if let Err(err) = tx.send(event) {
-                                log::error!("Failed to send GAP event to channel {:?}", err);
-                            }
-                        } else {
-                            log::error!(
-                                "No channel found for GAP event: {:?}",
-                                discriminant(&event)
-                            );
-                            log::error!("All gav events: {:?}", self.gap_events);
-                        }
-                    }
-                    Err(_) => {
-                        log::error!("Failed to acquire read lock for GAP events");
-                    }
-                }
-            }
-            _ => {
-                log::debug!("GAP event: {:?}", event);
-            }
-        }
+        //         match self.gap_events.lock() {
+        //             Ok(gap_events) => {
+        //                 if let Some(tx) = gap_events.get(&discriminant(&event)) {
+        //                     if let Err(err) = tx.send(event) {
+        //                         log::error!("Failed to send GAP event to channel {:?}", err);
+        //                     }
+        //                 } else {
+        //                     log::error!(
+        //                         "No channel found for GAP event: {:?}",
+        //                         discriminant(&event)
+        //                     );
+        //                     log::error!("All gav events: {:?}", gap_events);
+        //                 }
+        //             }
+        //             Err(_) => {
+        //                 log::error!("Failed to acquire read lock for GAP events");
+        //             }
+        //         }
+        //     }
+        //     _ => {
+        //         log::debug!("GAP event: {:?}", event);
+        //     }
+        // }
     }
 
     pub fn start_advertising(&self) -> anyhow::Result<()> {
         let (tx, rx) = mpsc::channel::<GapEvent>();
-        let Ok(mut gap_events) = self.gap_events.write() else {
+        let Ok(mut gap_events) = self.gap_events.lock() else {
             log::error!("Failed to acquire write lock for GAP events");
             return Err(anyhow::anyhow!(
                 "Failed to acquire write lock for GAP events"
             ));
         };
-        let qwe = discriminant(&GapEvent::AdvertisingStarted(BtStatus::Fail));
+        let qwe = discriminant(&GapEvent::AdvertisingStarted(BtStatus::Success));
+        gap_events.insert(qwe, tx);
+
         log::info!("AdvertisingStarted event discriminant: {:?}", qwe);
+        log::info!("AdvertisingStarted event discriminant: {:?}", gap_events);
+
+        let rwlock_addr = &self.gap_events as *const _ as usize;
         log::info!(
-            "AdvertisingStarted event discriminant: {:?}",
-            self.gap_events
+            "gap_events RwLock address in start_advertising: 0x{:x}",
+            rwlock_addr
         );
 
-        gap_events.insert(qwe, tx);
+        drop(gap_events);
 
         self.gap.start_advertising()?;
 
@@ -373,7 +389,7 @@ impl<'d> Gap<'d> {
             }
         };
 
-        gap_events.remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Fail)));
+        // gap_events.remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Fail)));
 
         log::debug!("Removed channel for AdvertisingStarted event");
         recv_result
