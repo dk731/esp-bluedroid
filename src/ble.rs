@@ -51,28 +51,16 @@ impl<'d> Ble<'_> {
     fn init_event_handlers(&self) -> anyhow::Result<()> {
         // Unsafe because we are using the `subscribe_nonstatic` method allowes to define a non-static callback.
         // This is safe because we have implemented proper unsubscribe logic in the `Drop` trait. for the `Ble` struct.
-        unsafe {
-            self.gatts
-                .subscribe_nonstatic(|e| self.gatts_events_callback(e.0, e.1))?;
-            log::debug!("Subscribed to GATTS events");
-        }
+        // unsafe {
+        //     self.gatts
+        //         .subscribe_nonstatic(|e| self.gatts_events_callback(e.0, e.1))?;
+        //     log::debug!("Subscribed to GATTS events");
+        // }
 
         Ok(())
     }
 
-    fn gatts_events_callback(&self, inteface: GattInterface, event: GattsEvent<'_>) {
-        info!("Received GATT event: {:?}", event);
-    }
-}
-
-impl Drop for Ble<'_> {
-    fn drop(&mut self) {
-        if let Err(err) = self.gap.unsubscribe() {
-            log::error!("Failed to unsubscribe from gap events: {:?}", err);
-        }
-
-        if let Err(err) = self.gatts.unsubscribe() {
-            log::error!("Failed to unsubscribe from gatts events: {:?}", err);
-        }
-    }
+    // fn gatts_events_callback(&self, inteface: GattInterface, event: GattsEvent<'_>) {
+    //     info!("Received GATT event: {:?}", event);
+    // }
 }
