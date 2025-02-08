@@ -23,7 +23,7 @@ pub type ExtBtDriver<'d> = Arc<BtDriver<'d, svc::bt::Ble>>;
 
 pub struct Ble<'d> {
     _bt: ExtBtDriver<'d>,
-    gap: Gap<'d>,
+    pub gap: Gap<'d>,
 
     // gap_events: Rc<gap::BleGapEvent<'d, ExtBtDriver<'d>>>,
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,

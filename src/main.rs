@@ -19,7 +19,7 @@ fn main() {
 
     log::info!("Hello, world! 123");
 
-    if let Err(err) = ble.start_advertising() {
+    if let Err(err) = ble.gap.start_advertising() {
         log::error!("Failed to start advertising: {:?}", err);
         return;
     }
