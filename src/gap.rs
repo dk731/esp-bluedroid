@@ -265,7 +265,9 @@ impl<'d> From<BleGapEvent<'d>> for GapEvent {
 
 pub struct Gap<'d> {
     gap: EspBleGap<'d, svc::bt::Ble, ExtBtDriver<'d>>,
-    gap_events: Arc<Mutex<HashMap<Discriminant<GapEvent>, mpsc::Sender<GapEvent>>>>,
+    // gap_events_rx: Arc<mpsc::Receiver<GapEvent>>,
+    // gap_events_tx: mpsc::Sender<GapEvent>,
+    // gap_events: Arc<Mutex<HashMap<Discriminant<GapEvent>, mpsc::Sender<GapEvent>>>>,
 }
 
 impl<'d> Gap<'d> {
@@ -274,7 +276,7 @@ impl<'d> Gap<'d> {
 
         let gap = Self {
             gap,
-            gap_events: Arc::new(Mutex::new(HashMap::new())),
+            // gap_events: Arc::new(Mutex::new(HashMap::new())),
         };
 
         gap.init()?;
@@ -287,25 +289,82 @@ impl<'d> Gap<'d> {
         let qwe = self as *const _ as usize;
         log::info!("Self in init call: 0x{:x}", qwe);
 
+        // match self.gap_events.lock() {
+        //     Ok(gap_events) => {
+        //         let addr = &gap_events as *const _ as usize;
+        //         log::info!("locked hashmap addr init call: 0x{:x}", addr);
+        //     }
+        //     Err(_) => {
+        //         log::error!("Failed to acquire read lock for GAP events");
+        //     }
+        // }
+
+        let (gap_events_tx, gap_events_rx) = mpsc::channel::<GapEvent>();
+
+        let qweqwe = Arc::new(gap_events_tx);
         unsafe {
             self.gap.subscribe_nonstatic(|e| {
                 let qwe = self as *const _ as usize;
                 log::info!("Self inside callback: 0x{:x}", qwe);
 
-                self.events_callback(e)
-            });
+                // match self.gap_events.lock() {
+                //     Ok(gap_events) => {
+                //         let addr = &gap_events as *const _ as usize;
+                //         log::info!("locked hashmap addr inside callback: 0x{:x}", addr);
+                //     }
+                //     Err(_) => {
+                //         log::error!("Failed to acquire read lock for GAP events");
+                //     }
+                // }
+                let qwe123 = qweqwe.clone();
+
+                let e: GapEvent = e.into();
+                std::thread::spawn(move || {
+                    log::info!("Self inside thread: 0x{:x}", qwe);
+                    qwe123.send(e).unwrap();
+                    // gap_events_tx.send(e).unwrap();
+                });
+            })?;
             log::debug!("Subscribed to GAP events");
         }
+
+        std::thread::spawn(move || loop {
+            match gap_events_rx.recv() {
+                Ok(event) => {
+                    log::info!("Received GAP event: {:?}", event);
+                    // Handle the event here
+                    // For example, you can send it to a channel or process it directly
+                }
+                Err(_) => {
+                    log::error!("Timeout waiting for GAP event");
+                    break;
+                }
+            }
+        });
 
         Ok(())
     }
 
-    fn events_callback(&self, event: BleGapEvent) {
-        let rwlock_addr = &self.gap_events as *const _ as usize;
-        log::info!(
-            "gap_events RwLock address in events_callback: 0x{:x}",
-            rwlock_addr
-        );
+    fn events_callback(&self) {
+        // let rwlock_addr = &self.gap_events as *const _ as usize;
+        // log::info!(
+        //     "gap_events RwLock address in events_callback: 0x{:x}",
+        //     rwlock_addr
+        // );
+
+        // loop {
+        //     match self.gap_events_rx.recv_timeout(Duration::from_secs(5)) {
+        //         Ok(event) => {
+        //             log::info!("Received GAP event: {:?}", event);
+        //             // Handle the event here
+        //             // For example, you can send it to a channel or process it directly
+        //         }
+        //         Err(_) => {
+        //             log::error!("Timeout waiting for GAP event");
+        //             break;
+        //         }
+        //     }
+        // }
 
         // match event {
         //     GapEvent::AdvertisingStarted(_) => {
@@ -337,62 +396,63 @@ impl<'d> Gap<'d> {
     }
 
     pub fn start_advertising(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::channel::<GapEvent>();
-        let Ok(mut gap_events) = self.gap_events.lock() else {
-            log::error!("Failed to acquire write lock for GAP events");
-            return Err(anyhow::anyhow!(
-                "Failed to acquire write lock for GAP events"
-            ));
-        };
-        let qwe = discriminant(&GapEvent::AdvertisingStarted(BtStatus::Success));
-        gap_events.insert(qwe, tx);
+        // let (tx, rx) = mpsc::channel::<GapEvent>();
+        // let Ok(mut gap_events) = self.gap_events.lock() else {
+        //     log::error!("Failed to acquire write lock for GAP events");
+        //     return Err(anyhow::anyhow!(
+        //         "Failed to acquire write lock for GAP events"
+        //     ));
+        // };
+        // let qwe = discriminant(&GapEvent::AdvertisingStarted(BtStatus::Success));
+        // gap_events.insert(qwe, tx);
 
-        log::info!("AdvertisingStarted event discriminant: {:?}", qwe);
-        log::info!("AdvertisingStarted event discriminant: {:?}", gap_events);
+        // log::info!("AdvertisingStarted event discriminant: {:?}", qwe);
+        // log::info!("AdvertisingStarted event discriminant: {:?}", gap_events);
 
-        let rwlock_addr = &self.gap_events as *const _ as usize;
-        log::info!(
-            "gap_events RwLock address in start_advertising: 0x{:x}",
-            rwlock_addr
-        );
+        // let rwlock_addr = &self.gap_events as *const _ as usize;
+        // log::info!(
+        //     "gap_events RwLock address in start_advertising: 0x{:x}",
+        //     rwlock_addr
+        // );
 
-        drop(gap_events);
+        // drop(gap_events);
 
         self.gap.start_advertising()?;
 
-        let recv_result = match rx.recv_timeout(Duration::from_secs(5)) {
-            Ok(status) => match status {
-                GapEvent::AdvertisingStarted(bt_status) => {
-                    log::info!("Received GAP event from channel: {:?}", status);
+        // let recv_result = match rx.recv_timeout(Duration::from_secs(5)) {
+        //     Ok(status) => match status {
+        //         GapEvent::AdvertisingStarted(bt_status) => {
+        //             log::info!("Received GAP event from channel: {:?}", status);
 
-                    match bt_status {
-                        BtStatus::Success => Ok(()),
-                        _ => {
-                            log::error!("Failed to start advertising: {:?}", bt_status);
-                            Err(anyhow::anyhow!(
-                                "Failed to start advertising: {:?}",
-                                bt_status
-                            ))
-                        }
-                    }
-                }
-                _ => {
-                    log::error!("Unexpected event: {:?}", status);
-                    Err(anyhow::anyhow!("Unexpected event: {:?}", status))
-                }
-            },
-            Err(_) => {
-                log::error!("Timeout waiting for advertising started event");
-                Err(anyhow::anyhow!(
-                    "Timeout waiting for advertising started event"
-                ))
-            }
-        };
+        //             match bt_status {
+        //                 BtStatus::Success => Ok(()),
+        //                 _ => {
+        //                     log::error!("Failed to start advertising: {:?}", bt_status);
+        //                     Err(anyhow::anyhow!(
+        //                         "Failed to start advertising: {:?}",
+        //                         bt_status
+        //                     ))
+        //                 }
+        //             }
+        //         }
+        //         _ => {
+        //             log::error!("Unexpected event: {:?}", status);
+        //             Err(anyhow::anyhow!("Unexpected event: {:?}", status))
+        //         }
+        //     },
+        //     Err(_) => {
+        //         log::error!("Timeout waiting for advertising started event");
+        //         Err(anyhow::anyhow!(
+        //             "Timeout waiting for advertising started event"
+        //         ))
+        //     }
+        // };
 
-        // gap_events.remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Fail)));
+        // // gap_events.remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Fail)));
 
-        log::debug!("Removed channel for AdvertisingStarted event");
-        recv_result
+        // log::debug!("Removed channel for AdvertisingStarted event");
+        // recv_result
+        Ok(())
     }
 
     // self.gap
