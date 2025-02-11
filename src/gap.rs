@@ -292,46 +292,71 @@ impl<'d> Gap<'d> {
         log::info!("GAP init");
 
         let (gap_events_tx, gap_events_rx) = mpsc::channel::<GapEvent>();
-        let text_mutex = Arc::new(Mutex::new(123));
 
-        let test_lock = text_mutex.clone();
-        std::thread::spawn(move || {
-            log::info!("Locking mutex in thread");
-            let guard = test_lock.lock();
-            std::thread::sleep(Duration::from_secs(5));
-            log::info!("Dropping mutex lock from thread {:?}", guard);
+        // unsafe {
+        //     self.gap.subscribe_nonstatic(|e| {
+        //         log::info!("Received GAP event: {:?}", e);
+
+        //         log::info!("Attempting to lock mutex in callback");
+
+        //         if let Ok(guard) = text_mutex.lock() {
+        //             log::info!("Mutex guard value: {:?}", *guard);
+        //         } else {
+        //             log::error!("Failed to acquire lock on mutex");
+        //         }
+
+        //         // let event = GapEvent::from(e);
+        //     })?;
+        //     log::debug!("Subscribed to GAP events");
+        // }
+
+        log::info!("Starting all threads");
+        let test_map = Arc::new(RwLock::new(HashMap::new()));
+
+        let callback_map = test_map.clone();
+        self.gap.subscribe(move |e| {
+            log::info!("Received GAP event, sending to the channel: {:?}", e);
+            // qweqwe.send(GapEvent::from(e)).unwrap_or_else(|err| {
+            //     log::error!("Failed to send GAP event to channel: {:?}", err);
+            // });
+            callback_map
+                .write()
+                .unwrap()
+                .insert(discriminant(&GapEvent::from(e)), 1 as f32);
+
+            log::info!(
+                "Callback dashmap result: {:?}",
+                callback_map.read().unwrap()
+            );
+        })?;
+
+        let inserter_map = test_map.clone();
+        std::thread::spawn(move || loop {
+            let sleep_duration = unsafe { esp_idf_svc::sys::esp_random() };
+            let sleep_duration = sleep_duration as f32 / u32::MAX as f32;
+            let sleep_duration = sleep_duration * 5.0f32;
+            std::thread::sleep(Duration::from_secs_f32(sleep_duration));
+
+            log::info!(
+                "Garbage thread slept for {} seconds, inserting to dashmap",
+                sleep_duration
+            );
+            inserter_map.write().unwrap().insert(
+                discriminant(&GapEvent::from(GapEvent::ChannelsConfigured(
+                    BtStatus::Success,
+                ))),
+                sleep_duration,
+            );
+
+            log::info!(
+                "Garbage thread inserted dashmap result: {:?}",
+                inserter_map.read().unwrap()
+            );
         });
 
-        let qweqwe = Arc::new(gap_events_tx);
-        unsafe {
-            self.gap.subscribe_nonstatic(|e| {
-                log::info!("Received GAP event: {:?}", e);
-
-                log::info!("Attempting to lock mutex in callback");
-
-                if let Ok(guard) = text_mutex.lock() {
-                    log::info!("Mutex guard value: {:?}", *guard);
-                } else {
-                    log::error!("Failed to acquire lock on mutex");
-                }
-
-                // let event = GapEvent::from(e);
-            })?;
-            log::debug!("Subscribed to GAP events");
-        }
-
         std::thread::spawn(move || loop {
-            match gap_events_rx.recv() {
-                Ok(event) => {
-                    log::info!("Received GAP event: {:?}", event);
-                    // Handle the event here
-                    // For example, you can send it to a channel or process it directly
-                }
-                Err(_) => {
-                    log::error!("Timeout waiting for GAP event");
-                    break;
-                }
-            }
+            std::thread::sleep(Duration::from_secs(5));
+            log::info!("Log thread: {:?}", test_map.read().unwrap())
         });
 
         Ok(())

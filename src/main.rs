@@ -22,12 +22,12 @@ fn main() {
 
     // log::info!("Hello, world! 123");
 
-    // if let Err(err) = ble.gap.start_advertising() {
-    //     log::error!("Failed to start advertising: {:?}", err);
-    //     return;
-    // }
+    if let Err(err) = ble.gap.start_advertising() {
+        log::error!("Failed to start advertising: {:?}", err);
+        return;
+    }
 
-    // log::info!("Advertising started");
+    log::info!("Advertising started");
 
     // let (tx, rx) = std::sync::mpsc::channel::<String>();
 
@@ -64,7 +64,7 @@ fn main() {
     // }
 
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_secs(10));
         log::info!("Still running...");
     }
 }
