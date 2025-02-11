@@ -6,9 +6,12 @@ use std::{
 };
 
 use dashmap::DashMap;
-use esp_idf_svc::bt::{
-    ble::gap::{BleGapEvent, EspBleGap},
-    BdAddr, BtStatus,
+use esp_idf_svc::{
+    bt::{
+        ble::gap::{BleGapEvent, EspBleGap},
+        BdAddr, BtStatus,
+    },
+    hal::task::block_on,
 };
 
 use crate::ble::ExtBtDriver;
@@ -286,44 +289,33 @@ impl<'d> Gap<'d> {
     }
 
     pub fn init(&self) -> anyhow::Result<()> {
-        let qwe = self as *const _ as usize;
-        log::info!("Self in init call: 0x{:x}", qwe);
-
-        // match self.gap_events.lock() {
-        //     Ok(gap_events) => {
-        //         let addr = &gap_events as *const _ as usize;
-        //         log::info!("locked hashmap addr init call: 0x{:x}", addr);
-        //     }
-        //     Err(_) => {
-        //         log::error!("Failed to acquire read lock for GAP events");
-        //     }
-        // }
+        log::info!("GAP init");
 
         let (gap_events_tx, gap_events_rx) = mpsc::channel::<GapEvent>();
+        let text_mutex = Arc::new(Mutex::new(123));
+
+        let test_lock = text_mutex.clone();
+        std::thread::spawn(move || {
+            log::info!("Locking mutex in thread");
+            let guard = test_lock.lock();
+            std::thread::sleep(Duration::from_secs(5));
+            log::info!("Dropping mutex lock from thread {:?}", guard);
+        });
 
         let qweqwe = Arc::new(gap_events_tx);
         unsafe {
             self.gap.subscribe_nonstatic(|e| {
-                let qwe = self as *const _ as usize;
-                log::info!("Self inside callback: 0x{:x}", qwe);
+                log::info!("Received GAP event: {:?}", e);
 
-                // match self.gap_events.lock() {
-                //     Ok(gap_events) => {
-                //         let addr = &gap_events as *const _ as usize;
-                //         log::info!("locked hashmap addr inside callback: 0x{:x}", addr);
-                //     }
-                //     Err(_) => {
-                //         log::error!("Failed to acquire read lock for GAP events");
-                //     }
-                // }
-                let qwe123 = qweqwe.clone();
+                log::info!("Attempting to lock mutex in callback");
 
-                let e: GapEvent = e.into();
-                std::thread::spawn(move || {
-                    log::info!("Self inside thread: 0x{:x}", qwe);
-                    qwe123.send(e).unwrap();
-                    // gap_events_tx.send(e).unwrap();
-                });
+                if let Ok(guard) = text_mutex.lock() {
+                    log::info!("Mutex guard value: {:?}", *guard);
+                } else {
+                    log::error!("Failed to acquire lock on mutex");
+                }
+
+                // let event = GapEvent::from(e);
             })?;
             log::debug!("Subscribed to GAP events");
         }

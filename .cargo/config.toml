@@ -3,7 +3,7 @@ target = "xtensa-esp32s3-espidf"
 
 [target.xtensa-esp32s3-espidf]
 linker = "ldproxy"
-runner = "espflash flash --monitor --partition-table=./partitions/esp32-ota-8m.csv"
+runner = "espflash flash --monitor --partition-table=./partitions/esp32-ota-8m.csv -f 80mhz -B 4000000"
 rustflags = ["--cfg", "espidf_time64"]
 
 [unstable]
