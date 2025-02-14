@@ -1,4 +1,5 @@
-pub mod attribute;
+pub mod characteristic;
+pub mod descriptor;
 pub mod service;
 
 use std::{
@@ -18,6 +19,7 @@ enum GattsEvent {}
 pub struct Gatts<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
 
+    services: Arc<RwLock<HashMap<u16, Service>>>,
     gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::Sender<GattsEvent>>>>,
 }
 
