@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::u32;
 
 use anyhow;
-use esp_bluedroid::ble;
+use esp_bluedroid::{ble, example};
 use esp_idf_svc::hal::delay::FreeRtos;
 use esp_idf_svc::hal::prelude::Peripherals;
 
@@ -10,24 +10,28 @@ fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    let Ok(peripherals) = Peripherals::take() else {
-        log::error!("Failed to take peripherals");
-        return;
-    };
+    example::example::main().unwrap_or_else(|err| {
+        log::error!("Error in example: {:?}", err);
+    });
 
-    let Ok(ble) = ble::Ble::new(peripherals.modem) else {
-        log::error!("Failed to create BLE instance");
-        return;
-    };
+    // let Ok(peripherals) = Peripherals::take() else {
+    //     log::error!("Failed to take peripherals");
+    //     return;
+    // };
 
-    // log::info!("Hello, world! 123");
+    // let Ok(ble) = ble::Ble::new(peripherals.modem) else {
+    //     log::error!("Failed to create BLE instance");
+    //     return;
+    // };
 
-    if let Err(err) = ble.gap.start_advertising() {
-        log::error!("Failed to start advertising: {:?}", err);
-        return;
-    }
+    // // log::info!("Hello, world! 123");
 
-    log::info!("Advertising started");
+    // if let Err(err) = ble.gap.start_advertising() {
+    //     log::error!("Failed to start advertising: {:?}", err);
+    //     return;
+    // }
+
+    // log::info!("Advertising started");
 
     // let (tx, rx) = std::sync::mpsc::channel::<String>();
 
@@ -63,8 +67,8 @@ fn main() {
     //     });
     // }
 
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(10));
-        log::info!("Still running...");
-    }
+    // loop {
+    //     std::thread::sleep(std::time::Duration::from_secs(10));
+    //     log::info!("Still running...");
+    // }
 }

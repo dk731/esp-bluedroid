@@ -289,7 +289,7 @@ impl<'d> Gap<'d> {
     pub fn init_callback(&self) -> anyhow::Result<()> {
         let callback_channels_map = self.gap_events.clone();
         self.gap.subscribe(move |e| {
-            log::debug!("Received GAP event{:?}", e);
+            log::info!("Received GAP event {:?}", e);
 
             let Ok(map_lock) = callback_channels_map.read() else {
                 log::error!("Failed to acquire write lock for GAP events");

@@ -67,8 +67,8 @@ pub mod example {
     }
 
     pub fn main() -> anyhow::Result<()> {
-        esp_idf_svc::sys::link_patches();
-        EspLogger::initialize_default();
+        // esp_idf_svc::sys::link_patches();
+        // EspLogger::initialize_default();
 
         let peripherals = Peripherals::take()?;
         let nvs = EspDefaultNvsPartition::take()?;
