@@ -1,17 +1,13 @@
 use std::{
     collections::HashMap,
     mem::{discriminant, Discriminant},
-    sync::{mpsc, Arc, Mutex, RwLock},
+    sync::{mpsc, Arc, RwLock},
     time::Duration,
 };
 
-use dashmap::DashMap;
-use esp_idf_svc::{
-    bt::{
-        ble::gap::{BleGapEvent, EspBleGap},
-        BdAddr, BtStatus,
-    },
-    hal::task::block_on,
+use esp_idf_svc::bt::{
+    ble::gap::{BleGapEvent, EspBleGap},
+    BdAddr, BtStatus,
 };
 
 use crate::ble::ExtBtDriver;
