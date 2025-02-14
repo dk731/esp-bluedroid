@@ -285,10 +285,10 @@ impl<'d> Gap<'d> {
     pub fn init_callback(&self) -> anyhow::Result<()> {
         let callback_channels_map = self.gap_events.clone();
         self.gap.subscribe(move |e| {
-            log::info!("Received GAP event {:?}", e);
+            log::info!("Received event {:?}", e);
 
             let Ok(map_lock) = callback_channels_map.read() else {
-                log::error!("Failed to acquire write lock for GAP events");
+                log::error!("Failed to acquire write lock for events map");
                 return;
             };
 
@@ -299,7 +299,7 @@ impl<'d> Gap<'d> {
             };
 
             callback_channel.send(event).unwrap_or_else(|err| {
-                log::error!("Failed to send GAP event to channel: {:?}", err);
+                log::error!("Failed to send event to callback channel: {:?}", err);
             });
         })?;
 
