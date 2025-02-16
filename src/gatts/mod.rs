@@ -5,70 +5,86 @@ pub mod service;
 
 use std::{
     collections::HashMap,
-    mem::Discriminant,
+    mem::{discriminant, Discriminant},
     sync::{mpsc, Arc, RwLock},
 };
 
 use app::App;
-use esp_idf_svc::bt::ble::gatt::server::{AppId, EspGatts};
+use esp_idf_svc::bt::ble::gatt::{
+    self,
+    server::{AppId, EspGatts},
+};
 
 use crate::ble::ExtBtDriver;
 use esp_idf_svc as svc;
 
-#[derive(Debug)]
-enum GattsEvent {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum GattsEvent {
+    Foo,
+}
+
+impl<'d> From<gatt::server::GattsEvent<'d>> for GattsEvent {
+    fn from(event: gatt::server::GattsEvent<'d>) -> Self {
+        // unsafe { std::mem::transmute(event) }
+        GattsEvent::Foo
+    }
+}
 
 pub struct Gatts<'d> {
-    gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
+    inner: Arc<RwLock<GattsInner<'d>>>,
+}
 
-    apps: Arc<RwLock<HashMap<AppId, App>>>,
+pub struct GattsInner<'d> {
+    gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
+    apps: HashMap<AppId, App<'d>>,
     gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::Sender<GattsEvent>>>>,
 }
 
 impl<'d> Gatts<'d> {
     pub fn new(bt: ExtBtDriver<'d>) -> anyhow::Result<Self> {
         let gatts = EspGatts::new(bt)?;
-
-        let gatts = Self {
+        let gatts_inner = GattsInner {
             gatts,
-            apps: Arc::new(RwLock::new(HashMap::new())),
+            apps: HashMap::new(),
             gatts_events: Arc::new(RwLock::new(HashMap::new())),
         };
+        gatts_inner.init_callback()?;
 
-        gatts.init_callback()?;
+        let gatts = Self {
+            inner: Arc::new(RwLock::new(gatts_inner)),
+        };
 
         Ok(gatts)
     }
 
-    pub fn init_callback(&self) -> anyhow::Result<()> {
-        let callback_channels_map = self.gatts_events.clone();
-        self.gatts.subscribe(move |e| {
+    pub fn register_app(&self, app_id: AppId) -> anyhow::Result<App<'d>> {
+        todo!()
+    }
+}
+
+impl<'d> GattsInner<'d> {
+    fn init_callback(&self) -> anyhow::Result<()> {
+        let callback_inner_ref = Arc::downgrade(&self.gatts_events);
+        self.gatts.subscribe(move |(interface, e)| {
             log::info!("Received event {:?}", e);
 
-            let Ok(map_lock) = callback_channels_map.read() else {
-                log::error!("Failed to acquire write lock for events map");
+            let Some(callback_map) = callback_inner_ref.upgrade() else {
+                log::error!("Failed to upgrade Gatts reference");
                 return;
             };
 
-            // let event = GattsEvent::from(e);
-            // let Some(callback_channel) = map_lock.get(&discriminant(&event)) else {
-            //     log::debug!("No callback channel found for event: {:?}", event);
-            //     return;
-            // };
+            let Ok(callback_map) = callback_map.read() else {
+                log::error!("Failed to acquire read lock on Gatts events map");
+                return;
+            };
 
-            // callback_channel.send(event).unwrap_or_else(|err| {
-            //     log::error!("Failed to send GAP event to channel: {:?}", err);
-            // });
+            let event = GattsEvent::from(e);
+            let Some(sender) = callback_map.get(&discriminant(&event)) else {
+                log::error!("No callback found for event {:?}", event);
+                return;
+            };
         })?;
 
         Ok(())
-    }
-
-    pub fn register_app(&self, app: App) -> anyhow::Result<AppId> {
-        let app_id = self.gatts.register_app(app.clone())?;
-        let mut apps = self.apps.write()?;
-        apps.insert(app_id, app);
-
-        Ok(app_id)
     }
 }
