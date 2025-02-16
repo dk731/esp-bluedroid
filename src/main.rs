@@ -25,6 +25,16 @@ fn main() {
     }
     log::info!("Started advertising");
 
+    let Ok(app) = ble.gatts.register_app(1) else {
+        log::error!("Failed to register GATT application");
+        return;
+    };
+
+    log::info!(
+        "Registered GATT application with ID {:?}",
+        app.id().unwrap()
+    );
+
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));
         log::info!("Still running...");

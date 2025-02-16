@@ -9,7 +9,7 @@ use std::{
     sync::{mpsc, Arc, RwLock},
 };
 
-use app::App;
+use app::{App, AppInner};
 use esp_idf_svc::bt::ble::gatt::{
     self,
     server::{AppId, EspGatts},
@@ -36,7 +36,7 @@ pub struct Gatts<'d> {
 
 pub struct GattsInner<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
-    apps: HashMap<AppId, App<'d>>,
+    apps: HashMap<AppId, Arc<RwLock<AppInner<'d>>>>,
     gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::Sender<GattsEvent>>>>,
 }
 
@@ -58,7 +58,7 @@ impl<'d> Gatts<'d> {
     }
 
     pub fn register_app(&self, app_id: AppId) -> anyhow::Result<App<'d>> {
-        todo!()
+        App::new(self.inner.clone(), app_id)
     }
 }
 
