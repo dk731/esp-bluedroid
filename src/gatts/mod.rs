@@ -1,3 +1,4 @@
+pub mod app;
 pub mod characteristic;
 pub mod descriptor;
 pub mod service;
@@ -8,7 +9,8 @@ use std::{
     sync::{mpsc, Arc, RwLock},
 };
 
-use esp_idf_svc::bt::ble::gatt::server::EspGatts;
+use app::App;
+use esp_idf_svc::bt::ble::gatt::server::{AppId, EspGatts};
 
 use crate::ble::ExtBtDriver;
 use esp_idf_svc as svc;
@@ -19,7 +21,7 @@ enum GattsEvent {}
 pub struct Gatts<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
 
-    services: Arc<RwLock<HashMap<u16, Service>>>,
+    apps: Arc<RwLock<HashMap<AppId, App>>>,
     gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::Sender<GattsEvent>>>>,
 }
 
@@ -29,6 +31,7 @@ impl<'d> Gatts<'d> {
 
         let gatts = Self {
             gatts,
+            apps: Arc::new(RwLock::new(HashMap::new())),
             gatts_events: Arc::new(RwLock::new(HashMap::new())),
         };
 
@@ -59,5 +62,13 @@ impl<'d> Gatts<'d> {
         })?;
 
         Ok(())
+    }
+
+    pub fn register_app(&self, app: App) -> anyhow::Result<AppId> {
+        let app_id = self.gatts.register_app(app.clone())?;
+        let mut apps = self.apps.write()?;
+        apps.insert(app_id, app);
+
+        Ok(app_id)
     }
 }
