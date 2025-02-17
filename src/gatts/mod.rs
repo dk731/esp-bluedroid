@@ -31,12 +31,12 @@ impl<'d> From<gatt::server::GattsEvent<'d>> for GattsEvent {
 }
 
 pub struct Gatts<'d> {
-    inner: Arc<RwLock<GattsInner<'d>>>,
+    inner: Arc<GattsInner<'d>>,
 }
 
 pub struct GattsInner<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
-    apps: HashMap<AppId, Arc<RwLock<AppInner<'d>>>>,
+    apps: Arc<RwLock<HashMap<AppId, Arc<AppInner<'d>>>>>,
     gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::Sender<GattsEvent>>>>,
 }
 
@@ -45,13 +45,13 @@ impl<'d> Gatts<'d> {
         let gatts = EspGatts::new(bt)?;
         let gatts_inner = GattsInner {
             gatts,
-            apps: HashMap::new(),
+            apps: Arc::new(RwLock::new(HashMap::new())),
             gatts_events: Arc::new(RwLock::new(HashMap::new())),
         };
         gatts_inner.init_callback()?;
 
         let gatts = Self {
-            inner: Arc::new(RwLock::new(gatts_inner)),
+            inner: Arc::new(gatts_inner),
         };
 
         Ok(gatts)
