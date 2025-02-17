@@ -1,5 +1,5 @@
 use esp_bluedroid::ble;
-use esp_idf_svc::hal::prelude::Peripherals;
+use esp_idf_svc::{bt::BtUuid, hal::prelude::Peripherals};
 
 fn main() {
     esp_idf_svc::sys::link_patches();
@@ -29,11 +29,21 @@ fn main() {
         log::error!("Failed to register GATT application");
         return;
     };
+    log::info!("Registered GATT application with ID {:?}", app.0.id);
 
-    log::info!(
-        "Registered GATT application with ID {:?}",
-        app.id().unwrap()
-    );
+    let Ok(service1) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789012))
+    else {
+        log::error!("Failed to register service 1");
+        return;
+    };
+    // log::info!("Registered service 1 with UUID {:?}", service1.uuid());
+
+    let Ok(service2) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789013))
+    else {
+        log::error!("Failed to register service 1");
+        return;
+    };
+    // log::info!("Registered service 2 with UUID {:?}", service2.uuid());
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));

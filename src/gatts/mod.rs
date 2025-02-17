@@ -30,9 +30,7 @@ impl<'d> From<gatt::server::GattsEvent<'d>> for GattsEvent {
     }
 }
 
-pub struct Gatts<'d> {
-    inner: Arc<GattsInner<'d>>,
-}
+pub struct Gatts<'d>(pub Arc<GattsInner<'d>>);
 
 pub struct GattsInner<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
@@ -50,15 +48,13 @@ impl<'d> Gatts<'d> {
         };
         gatts_inner.init_callback()?;
 
-        let gatts = Self {
-            inner: Arc::new(gatts_inner),
-        };
+        let gatts = Self(Arc::new(gatts_inner));
 
         Ok(gatts)
     }
 
     pub fn register_app(&self, app_id: AppId) -> anyhow::Result<App<'d>> {
-        App::new(self.inner.clone(), app_id)
+        App::new(self.0.clone(), app_id)
     }
 }
 

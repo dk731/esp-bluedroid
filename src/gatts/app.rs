@@ -3,13 +3,11 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use esp_idf_svc::bt::ble::gatt::server::AppId;
+use esp_idf_svc::bt::{ble::gatt::server::AppId, BtUuid};
 
 use super::GattsInner;
 
-pub struct App<'d> {
-    pub inner: Arc<AppInner<'d>>,
-}
+pub struct App<'d>(pub Arc<AppInner<'d>>);
 
 #[derive(Debug, Clone)]
 pub struct AppInner<'d> {
@@ -23,9 +21,7 @@ impl<'d> App<'d> {
         let gatts = Arc::downgrade(&gatts);
         let app = AppInner { gatts, id: app_id };
 
-        let app = App {
-            inner: Arc::new(app),
-        };
+        let app = Self(Arc::new(app));
 
         app.register_in_parent()?;
 
@@ -43,7 +39,7 @@ impl<'d> App<'d> {
 
     fn register_in_parent(&self) -> anyhow::Result<()> {
         let gatts = self
-            .inner
+            .0
             .gatts
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
@@ -52,16 +48,16 @@ impl<'d> App<'d> {
             .apps
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?
-            .insert(self.inner.id, self.inner.clone())
+            .insert(self.0.id, self.0.clone())
             .is_some()
         {
-            log::warn!("App with ID {:?} already exists, replacing it", app.id);
+            log::warn!("App with ID {:?} already exists, replacing it", self.0.id);
         }
 
         Ok(())
     }
 
-    pub fn register_service() -> anyhow::Result<()> {
+    pub fn register_service(&self, service_uuid: BtUuid) -> anyhow::Result<()> {
         // let gatts = self.gatts.upgrade().ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
         // gatts.register_service(self.id)?;
         Ok(())
