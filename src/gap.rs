@@ -265,7 +265,7 @@ impl<'d> From<BleGapEvent<'d>> for GapEvent {
 pub struct Gap<'d> {
     gap: EspBleGap<'d, svc::bt::Ble, ExtBtDriver<'d>>,
 
-    gap_events: Arc<RwLock<HashMap<Discriminant<GapEvent>, mpsc::Sender<GapEvent>>>>,
+    gap_events: Arc<RwLock<HashMap<Discriminant<GapEvent>, mpsc::SyncSender<GapEvent>>>>,
 }
 
 impl<'d> Gap<'d> {
@@ -307,7 +307,7 @@ impl<'d> Gap<'d> {
     }
 
     pub fn start_advertising(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::channel::<GapEvent>();
+        let (tx, rx) = mpsc::sync_channel::<GapEvent>(0);
         match self.gap_events.write() {
             Ok(mut events_map) => {
                 events_map.insert(

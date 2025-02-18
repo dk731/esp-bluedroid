@@ -1,9 +1,12 @@
 use std::{
     any,
-    sync::{Arc, RwLock, Weak},
+    sync::{mpsc, Arc, RwLock, Weak},
 };
 
-use esp_idf_svc::bt::{ble::gatt::server::AppId, BtUuid};
+use esp_idf_svc::bt::{
+    ble::gatt::server::{AppId, GattsEvent},
+    BtUuid,
+};
 
 use super::GattsInner;
 
@@ -23,13 +26,27 @@ impl<'d> App<'d> {
 
         let app = Self(Arc::new(app));
 
+        app.register_bluedroid()?;
         app.register_in_parent()?;
 
         Ok(app)
     }
 
-    fn register_ble(&self) -> anyhow::Result<()> {
-        // self.inner.read()
+    fn register_bluedroid(&self) -> anyhow::Result<()> {
+        let (tx, rx) = mpsc::sync_channel::<GattsEvent>(0);
+        let gatts = self
+            .0
+            .gatts
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+
+        // gatts
+        //     .gatts_events
+        //     .write()
+        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
+        //     .insert(discriminant(GattsEvent::Foo), tx.clone());
+
+        gatts.gatts.register_app(self.0.id)?;
 
         // Register the BLE app with the GATT server
         // gatts.register_app(app.id)?;
