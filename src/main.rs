@@ -43,24 +43,35 @@ fn main() {
     };
     log::info!("Registered GATT application with ID {:?}", app2.0);
 
-    let Ok(service1) = app1.register_service(GattServiceId {
-        id: GattId {
-            uuid: BtUuid::uuid128(0x12345678901234567890123456789012),
-            inst_id: 0,
+    let Ok(service1) = app1.register_service(
+        GattServiceId {
+            id: GattId {
+                uuid: BtUuid::uuid128(0x12345678901234567890123456789012),
+                inst_id: 0,
+            },
+            is_primary: true,
         },
-        is_primary: true,
-    }) else {
+        10,
+    ) else {
         log::error!("Failed to register service 1");
         return;
     };
-    // log::info!("Registered service 1 with UUID {:?}", service1.uuid());
+    log::info!("Registered service 1 with UUID {:?}", service1.0.service_id);
 
-    // let Ok(service2) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789013))
-    // else {
-    //     log::error!("Failed to register service 1");
-    //     return;
-    // };
-    // // log::info!("Registered service 2 with UUID {:?}", service2.uuid());
+    let Ok(service2) = app1.register_service(
+        GattServiceId {
+            id: GattId {
+                uuid: BtUuid::uuid128(0x12345678901234567890123456789013),
+                inst_id: 0,
+            },
+            is_primary: true,
+        },
+        20,
+    ) else {
+        log::error!("Failed to register service 1");
+        return;
+    };
+    log::info!("Registered service 2 with UUID {:?}", service2.0.service_id);
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));

@@ -11,7 +11,7 @@ use esp_idf_svc::bt::{
 };
 
 use super::{
-    service::{Service, ServiceInner},
+    service::{Service, ServiceId, ServiceInner},
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
@@ -21,7 +21,7 @@ pub struct App<'d>(pub Arc<AppInner<'d>>);
 pub struct AppInner<'d> {
     pub gatts: Weak<GattsInner<'d>>,
     pub gatt_interface: RwLock<Option<GattInterface>>,
-    pub services: Arc<RwLock<HashMap<GattServiceId, Arc<ServiceInner<'d>>>>>,
+    pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner<'d>>>>>,
 
     pub id: AppId,
 }
@@ -79,10 +79,24 @@ impl<'d> App<'d> {
                             ));
                         }
 
-                        *self.0.gatt_interface.write().map_err(|_| {
+                        match self.0.gatt_interface.write().map_err(|_| {
                             anyhow::anyhow!("Failed to write Gatt interface after registration")
-                        })? = Some(interface);
-                        break Ok(());
+                        }) {
+                            Ok(mut gatt_interface) => {
+                                if gatt_interface.is_some() {
+                                    break Err(anyhow::anyhow!(
+                                        "Gatt interface is already set, likely App was not initialized properly"
+                                    ));
+                                }
+                                *gatt_interface = Some(interface);
+                                break Ok(());
+                            }
+                            Err(_) => {
+                                break Err(anyhow::anyhow!(
+                                    "Failed to write Gatt interface after registration"
+                                ));
+                            }
+                        };
                     }
                 }
                 Ok(_) => {
@@ -129,7 +143,11 @@ impl<'d> App<'d> {
         Ok(())
     }
 
-    pub fn register_service(&self, service_id: GattServiceId) -> anyhow::Result<Service<'d>> {
-        Service::new(self.0.clone(), service_id)
+    pub fn register_service(
+        &self,
+        service_id: GattServiceId,
+        num_handles: u16,
+    ) -> anyhow::Result<Service<'d>> {
+        Service::new(self.0.clone(), service_id, num_handles)
     }
 }

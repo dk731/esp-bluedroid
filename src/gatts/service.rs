@@ -5,25 +5,46 @@ use std::{
 };
 
 use esp_idf_svc::bt::{
-    ble::gatt::{server::AppId, GattServiceId, GattStatus, ServiceUuid},
-    BtUuid,
+    ble::gatt::{server::AppId, GattId, GattServiceId, GattStatus, Handle, ServiceUuid},
+    BtStatus, BtUuid,
 };
 
 use super::{app::AppInner, GattsEvent, GattsEventMessage, GattsInner};
 
 pub struct Service<'d>(pub Arc<ServiceInner<'d>>);
-// pub struct ServiceIdKey(pub )
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceId(GattServiceId);
+
+impl std::hash::Hash for ServiceId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.id.inst_id.hash(state);
+        self.0.id.uuid.as_bytes().hash(state);
+    }
+}
 
 #[derive(Debug)]
 pub struct ServiceInner<'d> {
-    app: Weak<AppInner<'d>>,
-    service_id: GattServiceId,
+    pub app: Weak<AppInner<'d>>,
+    pub service_id: GattServiceId,
+    pub num_handles: u16,
+
+    handle: RwLock<Option<Handle>>,
 }
 
 impl<'d> Service<'d> {
-    pub fn new(app: Arc<AppInner<'d>>, service_id: GattServiceId) -> anyhow::Result<Self> {
+    pub fn new(
+        app: Arc<AppInner<'d>>,
+        service_id: GattServiceId,
+        num_handles: u16,
+    ) -> anyhow::Result<Self> {
         let app = Arc::downgrade(&app);
-        let service = ServiceInner { app, service_id };
+        let service = ServiceInner {
+            app,
+            service_id,
+            handle: RwLock::new(None),
+            num_handles,
+        };
 
         let service = Self(Arc::new(service));
 
@@ -34,58 +55,18 @@ impl<'d> Service<'d> {
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        // let (tx, rx) = mpsc::sync_channel(1);
-        // let callback_key = discriminant(&GattsEvent::ServiceRegistered {
-        //     status: GattStatus::Busy,
-        //     app_id: 0,
-        // });
-
-        // let gatts = self
-        //     .0
-        //     .app
-        //     .upgrade()
-        //     .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-
-        // gatts
-        //     .gatts_events
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
-        //     .insert(callback_key.clone(), tx.clone());
-
-        // gatts.gatts.register_app(self.0.id)?;
-
-        // let callback_result = loop {
-        //     match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-        //         Ok(GattsEventMessage(
-        //             interface,
-        //             GattsEvent::ServiceRegistered { status, app_id },
-        //         )) => {
-        //             if app_id == self.0.id {
-        //                 if status != GattStatus::Ok {
-        //                     break Err(anyhow::anyhow!(
-        //                         "Failed to register GATT application: {:?}",
-        //                         status
-        //                     ));
-        //                 }
-
-        //                 *self.0.gatt_interface.write().map_err(|_| {
-        //                     anyhow::anyhow!("Failed to write Gatt interface after registration")
-        //                 })? = Some(interface);
-        //                 break Ok(());
-        //             }
-        //         }
-        //         Ok(_) => {
-        //             break Err(anyhow::anyhow!(
-        //                 "Received unexpected GATT application registration event"
-        //             ));
-        //         }
-        //         Err(_) => {
-        //             break Err(anyhow::anyhow!(
-        //                 "Timed out waiting for GATT application registration event"
-        //             ));
-        //         }
-        //     }
-        // };
+        let (tx, rx) = mpsc::sync_channel(1);
+        let callback_key = discriminant(&GattsEvent::ServiceCreated {
+            status: GattStatus::Busy,
+            service_handle: 0,
+            service_id: GattServiceId {
+                id: GattId {
+                    uuid: BtUuid::uuid16(0),
+                    inst_id: 0,
+                },
+                is_primary: false,
+            },
+        });
 
         let app = self
             .0
@@ -105,19 +86,74 @@ impl<'d> Service<'d> {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
-        // gatts.gatts.create_service(gatt_interface, service_id, num_handles)
-        // gatts.gatts.add_characteristic(service_handle, characteristic, data)
-        // gatts.gatts.start_service(service_handle)
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .insert(callback_key.clone(), tx.clone());
 
-        // gatts.create_service(gatt_if, service_id, num_handles);
+        gatts
+            .gatts
+            .create_service(gatt_interface, &self.0.service_id, 10)?;
 
-        // gatts
-        //     .gatts_events
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
-        //     .remove(&callback_key);
+        let callback_result = loop {
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(GattsEventMessage(
+                    _,
+                    GattsEvent::ServiceCreated {
+                        status,
+                        service_handle,
+                        service_id,
+                    },
+                )) => {
+                    if service_id == self.0.service_id {
+                        if status != GattStatus::Ok {
+                            break Err(anyhow::anyhow!(
+                                "Failed to register GATT application: {:?}",
+                                status
+                            ));
+                        }
 
-        // callback_result?;
+                        match self.0.handle.write().map_err(|_| {
+                            anyhow::anyhow!("Failed to write Gatt interface after registration")
+                        }) {
+                            Ok(mut handle) => {
+                                if handle.is_some() {
+                                    break Err(anyhow::anyhow!(
+                                        "Service handle already set, likely Service was not initialized properly"
+                                    ));
+                                }
+                                *handle = Some(service_handle);
+                                break Ok(());
+                            }
+                            Err(_) => {
+                                break Err(anyhow::anyhow!(
+                                    "Failed to write Gatt interface after registration"
+                                ));
+                            }
+                        };
+                    }
+                }
+                Ok(_) => {
+                    break Err(anyhow::anyhow!(
+                        "Received unexpected GATT application registration event"
+                    ));
+                }
+                Err(_) => {
+                    break Err(anyhow::anyhow!(
+                        "Timed out waiting for GATT application registration event"
+                    ));
+                }
+            }
+        };
+
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .remove(&callback_key);
+
+        callback_result?;
 
         Ok(())
     }
@@ -129,20 +165,18 @@ impl<'d> Service<'d> {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
-        let mut qwe = app
+        if app
             .services
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?;
-
-        // if app
-        //     .services
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?.
-        //     // .insert(self.0.service_id.clone(), self.0.clone())
-        //     // .is_some()
-        // {
-        //     // log::warn!("App with ID {:?} already exists, replacing it", self.0.id);
-        // }
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?
+            .insert(ServiceId(self.0.service_id.clone()), self.0.clone())
+            .is_some()
+        {
+            log::warn!(
+                "App with ID {:?} already exists, replacing it",
+                self.0.service_id
+            );
+        }
 
         Ok(())
     }
