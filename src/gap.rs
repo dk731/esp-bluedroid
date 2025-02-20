@@ -308,17 +308,13 @@ impl<'d> Gap<'d> {
 
     pub fn start_advertising(&self) -> anyhow::Result<()> {
         let (tx, rx) = mpsc::sync_channel::<GapEvent>(0);
-        match self.gap_events.write() {
-            Ok(mut events_map) => {
-                events_map.insert(
-                    discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)),
-                    tx.clone(),
-                );
-            }
-            Err(err) => {
-                return Err(anyhow::anyhow!("Failed to acquire write lock: {:?}", err));
-            }
-        }
+        self.gap_events
+            .write()
+            .map_err(|err| anyhow::anyhow!("Failed to write gap_events: {:?}", err))?
+            .insert(
+                discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)),
+                tx.clone(),
+            );
 
         self.gap.start_advertising()?;
 
@@ -338,14 +334,10 @@ impl<'d> Gap<'d> {
             )),
         };
 
-        match self.gap_events.write() {
-            Ok(mut qwe) => {
-                qwe.remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)));
-            }
-            Err(err) => {
-                return Err(anyhow::anyhow!("Failed to acquire write lock: {:?}", err));
-            }
-        };
+        self.gap_events
+            .write()
+            .map_err(|err| anyhow::anyhow!("Failed to write gap_events: {:?}", err))?
+            .remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)));
 
         recv_result
     }

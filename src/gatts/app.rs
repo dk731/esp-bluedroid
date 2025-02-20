@@ -33,7 +33,7 @@ impl<'d> App<'d> {
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel::<GattsEvent>(0);
+        // let (tx, rx) = mpsc::sync_channel::<GattsEvent>(0);
         let gatts = self
             .0
             .gatts
@@ -44,7 +44,7 @@ impl<'d> App<'d> {
         //     .gatts_events
         //     .write()
         //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
-        //     .insert(discriminant(GattsEvent::Foo), tx.clone());
+        //     .insert(discriminant(GattsEvent::App), tx.clone());
 
         gatts.gatts.register_app(self.0.id)?;
 
