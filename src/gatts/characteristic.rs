@@ -5,7 +5,9 @@ use std::{
 };
 
 use esp_idf_svc::bt::{
-    ble::gatt::{server::AppId, GattId, GattServiceId, GattStatus, Handle, ServiceUuid},
+    ble::gatt::{
+        server::AppId, GattCharacteristic, GattId, GattServiceId, GattStatus, Handle, ServiceUuid,
+    },
     BtStatus, BtUuid,
 };
 
@@ -16,12 +18,16 @@ pub struct Characteristic<'d>(pub Arc<CharacteristicInner<'d>>);
 #[derive(Debug)]
 pub struct CharacteristicInner<'d> {
     pub service: Weak<ServiceInner<'d>>,
+    // pub parameters: RwLock<GattCharacteristic>,
 }
 
 impl<'d> Characteristic<'d> {
     pub fn new(service: Arc<ServiceInner<'d>>) -> anyhow::Result<Self> {
         let service = Arc::downgrade(&service);
-        let characterstic = CharacteristicInner { service };
+        let characterstic = CharacteristicInner {
+            service,
+            // parameters,
+        };
 
         let characterstic = Self(Arc::new(characterstic));
 
@@ -45,23 +51,39 @@ impl<'d> Characteristic<'d> {
             },
         });
 
-        // let app = self
-        //     .0
-        //     .service
-        //     .upgrade()
-        //     .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-        // let gatt_interface = app
-        //     .gatt_interface
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface after registration"))?
-        //     .ok_or(anyhow::anyhow!(
-        //         "Gatt interface is None, likly App was not initialized properly"
-        //     ))?;
+        let service = self
+            .0
+            .service
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+        let service_handle = service
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Service handle after registration"))?
+            .ok_or(anyhow::anyhow!(
+                "Service handle is None, likely Service was not initialized properly"
+            ))?;
 
-        // let gatts = app
+        let app = service
+            .app
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
+        let gatt_interface = app
+            .gatt_interface
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface after registration"))?
+            .ok_or(anyhow::anyhow!(
+                "Gatt interface is None, likly App was not initialized properly"
+            ))?;
+
+        let gatts = app
+            .gatts
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+
+        // gatts
         //     .gatts
-        //     .upgrade()
-        //     .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+        //     .add_characteristic(service_handle, characteristic, data)?;
 
         // gatts
         //     .gatts_events

@@ -35,7 +35,7 @@ pub struct ServiceInner<'d> {
     pub num_handles: u16,
 
     pub characteristics: Arc<RwLock<HashMap<u8, Arc<CharacteristicInner<'d>>>>>,
-    handle: RwLock<Option<Handle>>,
+    pub handle: RwLock<Option<Handle>>,
 }
 
 impl<'d> Service<'d> {
