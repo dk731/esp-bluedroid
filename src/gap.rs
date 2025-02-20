@@ -298,26 +298,29 @@ impl<'d> Gap<'d> {
                 return;
             };
 
+            log::info!("Sending event {:?} to callback channel", event);
             callback_channel.send(event).unwrap_or_else(|err| {
                 log::error!("Failed to send event to callback channel: {:?}", err);
             });
+            log::info!("Sent event to callback channel");
         })?;
 
         Ok(())
     }
 
     pub fn start_advertising(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel::<GapEvent>(0);
+        let (tx, rx) = mpsc::sync_channel::<GapEvent>(1);
         self.gap_events
             .write()
             .map_err(|err| anyhow::anyhow!("Failed to write gap_events: {:?}", err))?
             .insert(
-                discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)),
+                discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)).into(),
                 tx.clone(),
             );
 
         self.gap.start_advertising()?;
 
+        log::info!("Listening for advertising started event");
         let recv_result = match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(status) => match status {
                 GapEvent::AdvertisingStarted(bt_status) => match bt_status {

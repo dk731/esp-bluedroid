@@ -25,25 +25,31 @@ fn main() {
     }
     log::info!("Started advertising");
 
-    let Ok(app) = ble.gatts.register_app(1) else {
+    let Ok(app1) = ble.gatts.register_app(1) else {
         log::error!("Failed to register GATT application");
         return;
     };
-    log::info!("Registered GATT application with ID {:?}", app.0.id);
+    log::info!("Registered GATT application with ID {:?}", app1.0.id);
 
-    let Ok(service1) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789012))
-    else {
-        log::error!("Failed to register service 1");
+    let Ok(app2) = ble.gatts.register_app(2) else {
+        log::error!("Failed to register GATT application");
         return;
     };
-    // log::info!("Registered service 1 with UUID {:?}", service1.uuid());
+    log::info!("Registered GATT application with ID {:?}", app2.0.id);
 
-    let Ok(service2) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789013))
-    else {
-        log::error!("Failed to register service 1");
-        return;
-    };
-    // log::info!("Registered service 2 with UUID {:?}", service2.uuid());
+    // let Ok(service1) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789012))
+    // else {
+    //     log::error!("Failed to register service 1");
+    //     return;
+    // };
+    // // log::info!("Registered service 1 with UUID {:?}", service1.uuid());
+
+    // let Ok(service2) = app.register_service(BtUuid::uuid128(0x12345678901234567890123456789013))
+    // else {
+    //     log::error!("Failed to register service 1");
+    //     return;
+    // };
+    // // log::info!("Registered service 2 with UUID {:?}", service2.uuid());
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));

@@ -14,7 +14,7 @@ use esp_idf_svc::bt::{
     ble::gatt::{
         self,
         server::{AppId, ConnectionId, EspGatts, TransferId},
-        GattConnParams, GattConnReason, GattServiceId, GattStatus, Handle,
+        GattConnParams, GattConnReason, GattInterface, GattServiceId, GattStatus, Handle,
     },
     BdAddr, BtUuid,
 };
@@ -346,12 +346,15 @@ impl<'d> From<gatt::server::GattsEvent<'d>> for GattsEvent {
     }
 }
 
+struct GattsEventMessage(GattInterface, GattsEvent);
+
 pub struct Gatts<'d>(pub Arc<GattsInner<'d>>);
 
 pub struct GattsInner<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
     apps: Arc<RwLock<HashMap<AppId, Arc<AppInner<'d>>>>>,
-    gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::Sender<GattsEvent>>>>,
+    gatts_events:
+        Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::SyncSender<GattsEventMessage>>>>,
 }
 
 impl<'d> Gatts<'d> {
@@ -396,9 +399,11 @@ impl<'d> GattsInner<'d> {
                 return;
             };
 
-            sender.send(event).unwrap_or_else(|err| {
-                log::error!("Failed to send event: {:?}", err);
-            });
+            sender
+                .send(GattsEventMessage(interface, event))
+                .unwrap_or_else(|err| {
+                    log::error!("Failed to send event: {:?}", err);
+                });
         })?;
 
         Ok(())

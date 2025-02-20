@@ -378,6 +378,7 @@ pub mod example {
                 // manufacturer_data: todo!(),
                 ..Default::default()
             })?;
+
             self.gatts.create_service(
                 gatt_if,
                 &GattServiceId {

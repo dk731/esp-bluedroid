@@ -1,20 +1,22 @@
 use std::{
     any,
+    mem::discriminant,
     sync::{mpsc, Arc, RwLock, Weak},
 };
 
 use esp_idf_svc::bt::{
-    ble::gatt::server::{AppId, GattsEvent},
+    ble::gatt::{server::AppId, GattInterface, GattStatus},
     BtUuid,
 };
 
-use super::GattsInner;
+use super::{GattsEvent, GattsEventMessage, GattsInner};
 
 pub struct App<'d>(pub Arc<AppInner<'d>>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct AppInner<'d> {
     gatts: Weak<GattsInner<'d>>,
+    gatt_interface: RwLock<Option<GattInterface>>,
 
     pub id: AppId,
 }
@@ -22,7 +24,11 @@ pub struct AppInner<'d> {
 impl<'d> App<'d> {
     pub fn new(gatts: Arc<GattsInner<'d>>, app_id: AppId) -> anyhow::Result<Self> {
         let gatts = Arc::downgrade(&gatts);
-        let app = AppInner { gatts, id: app_id };
+        let app = AppInner {
+            gatts,
+            id: app_id,
+            gatt_interface: RwLock::new(None),
+        };
 
         let app = Self(Arc::new(app));
 
@@ -33,23 +39,66 @@ impl<'d> App<'d> {
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        // let (tx, rx) = mpsc::sync_channel::<GattsEvent>(0);
+        let (tx, rx) = mpsc::sync_channel(1);
+        let callback_key = discriminant(&GattsEvent::ServiceRegistered {
+            status: GattStatus::Busy,
+            app_id: 0,
+        });
+
         let gatts = self
             .0
             .gatts
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
-        // gatts
-        //     .gatts_events
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
-        //     .insert(discriminant(GattsEvent::App), tx.clone());
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
+            .insert(callback_key.clone(), tx.clone());
 
         gatts.gatts.register_app(self.0.id)?;
 
-        // Register the BLE app with the GATT server
-        // gatts.register_app(app.id)?;
+        let callback_result = loop {
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(GattsEventMessage(
+                    interface,
+                    GattsEvent::ServiceRegistered { status, app_id },
+                )) => {
+                    if app_id == self.0.id {
+                        if status != GattStatus::Ok {
+                            break Err(anyhow::anyhow!(
+                                "Failed to register GATT application: {:?}",
+                                status
+                            ));
+                        }
+
+                        *self.0.gatt_interface.write().map_err(|_| {
+                            anyhow::anyhow!("Failed to write Gatt interface after registration")
+                        })? = Some(interface);
+                        break Ok(());
+                    }
+                }
+                Ok(_) => {
+                    break Err(anyhow::anyhow!(
+                        "Received unexpected GATT application registration event"
+                    ));
+                }
+                Err(_) => {
+                    break Err(anyhow::anyhow!(
+                        "Timed out waiting for GATT application registration event"
+                    ));
+                }
+            }
+        };
+
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .remove(&callback_key);
+
+        callback_result?;
 
         Ok(())
     }
