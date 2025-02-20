@@ -1,22 +1,27 @@
 use std::{
     any,
+    collections::HashMap,
     mem::discriminant,
     sync::{mpsc, Arc, RwLock, Weak},
 };
 
 use esp_idf_svc::bt::{
-    ble::gatt::{server::AppId, GattInterface, GattStatus},
+    ble::gatt::{server::AppId, GattInterface, GattServiceId, GattStatus},
     BtUuid,
 };
 
-use super::{GattsEvent, GattsEventMessage, GattsInner};
+use super::{
+    service::{Service, ServiceInner},
+    GattsEvent, GattsEventMessage, GattsInner,
+};
 
 pub struct App<'d>(pub Arc<AppInner<'d>>);
 
 #[derive(Debug)]
 pub struct AppInner<'d> {
-    gatts: Weak<GattsInner<'d>>,
-    gatt_interface: RwLock<Option<GattInterface>>,
+    pub gatts: Weak<GattsInner<'d>>,
+    pub gatt_interface: RwLock<Option<GattInterface>>,
+    pub services: Arc<RwLock<HashMap<GattServiceId, Arc<ServiceInner<'d>>>>>,
 
     pub id: AppId,
 }
@@ -27,6 +32,7 @@ impl<'d> App<'d> {
         let app = AppInner {
             gatts,
             id: app_id,
+            services: Arc::new(RwLock::new(HashMap::new())),
             gatt_interface: RwLock::new(None),
         };
 
@@ -123,9 +129,7 @@ impl<'d> App<'d> {
         Ok(())
     }
 
-    pub fn register_service(&self, service_uuid: BtUuid) -> anyhow::Result<()> {
-        // let gatts = self.gatts.upgrade().ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-        // gatts.register_service(self.id)?;
-        Ok(())
+    pub fn register_service(&self, service_id: GattServiceId) -> anyhow::Result<Service<'d>> {
+        Service::new(self.0.clone(), service_id)
     }
 }
