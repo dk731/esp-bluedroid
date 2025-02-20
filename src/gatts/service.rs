@@ -1,5 +1,6 @@
 use std::{
     any,
+    collections::HashMap,
     mem::discriminant,
     sync::{mpsc, Arc, RwLock, Weak},
 };
@@ -9,7 +10,11 @@ use esp_idf_svc::bt::{
     BtStatus, BtUuid,
 };
 
-use super::{app::AppInner, GattsEvent, GattsEventMessage, GattsInner};
+use super::{
+    app::AppInner,
+    characteristic::{Characteristic, CharacteristicInner},
+    GattsEvent, GattsEventMessage, GattsInner,
+};
 
 pub struct Service<'d>(pub Arc<ServiceInner<'d>>);
 
@@ -29,6 +34,7 @@ pub struct ServiceInner<'d> {
     pub service_id: GattServiceId,
     pub num_handles: u16,
 
+    pub characteristics: Arc<RwLock<HashMap<u8, Arc<CharacteristicInner<'d>>>>>,
     handle: RwLock<Option<Handle>>,
 }
 
@@ -44,6 +50,7 @@ impl<'d> Service<'d> {
             service_id,
             handle: RwLock::new(None),
             num_handles,
+            characteristics: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let service = Self(Arc::new(service));
@@ -181,9 +188,7 @@ impl<'d> Service<'d> {
         Ok(())
     }
 
-    pub fn register_characteristic(&self, service_uuid: BtUuid) -> anyhow::Result<()> {
-        // let gatts = self.gatts.upgrade().ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-        // gatts.register_service(self.id)?;
-        Ok(())
+    pub fn register_characteristic(&self) -> anyhow::Result<Characteristic<'d>> {
+        Characteristic::new(self.0.clone())
     }
 }
