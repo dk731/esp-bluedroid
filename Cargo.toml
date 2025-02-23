@@ -28,6 +28,7 @@ esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-
 anyhow = "1.0.97"
 heapless = "0.8.0"
 enumset = "1.1.5"
+serde = "1.0.219"
 
 [build-dependencies]
 embuild = "0.33"

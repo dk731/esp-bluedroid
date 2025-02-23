@@ -598,6 +598,7 @@ dependencies = [
  "esp-idf-svc",
  "heapless",
  "log",
+ "serde",
 ]
 
 [[package]]
