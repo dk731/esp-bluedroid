@@ -1,24 +1,30 @@
 use std::{
     any,
     mem::discriminant,
-    sync::{mpsc, Arc, RwLock, Weak},
+    sync::{Arc, RwLock, Weak},
 };
 
 use esp_idf_svc::bt::{
-    ble::gatt::{
-        server::AppId, GattCharacteristic, GattId, GattServiceId, GattStatus, Handle, ServiceUuid,
-    },
-    BtStatus, BtUuid,
+    ble::gatt::{GattId, GattServiceId, GattStatus},
+    BtUuid,
 };
 
-use super::{app::AppInner, service::ServiceInner, GattsEvent, GattsEventMessage, GattsInner};
+use super::{service::ServiceInner, GattsEvent};
+
+pub struct CharacteristicId(BtUuid);
+impl std::hash::Hash for CharacteristicId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.as_bytes().hash(state);
+    }
+}
 
 pub struct Characteristic<'d>(pub Arc<CharacteristicInner<'d>>);
 
 #[derive(Debug)]
 pub struct CharacteristicInner<'d> {
     pub service: Weak<ServiceInner<'d>>,
-    // pub parameters: RwLock<GattCharacteristic>,
+
+    value: RwLock<impl Serialize, Deserialize>,
 }
 
 impl<'d> Characteristic<'d> {
@@ -76,14 +82,19 @@ impl<'d> Characteristic<'d> {
                 "Gatt interface is None, likly App was not initialized properly"
             ))?;
 
-        let gatts = app
+        let gatts = &app
             .gatts
             .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?
+            .gatts;
+
+        // gatts.add_characteristic(service_handle, characteristic, data)
 
         // gatts
         //     .gatts
         //     .add_characteristic(service_handle, characteristic, data)?;
+        // gatts.gatts.add_descriptor(service_handle, descriptor)
+        // gatts.gatts
 
         // gatts
         //     .gatts_events

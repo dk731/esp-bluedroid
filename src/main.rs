@@ -7,6 +7,19 @@ use esp_idf_svc::{
     hal::prelude::Peripherals,
 };
 
+struct FooBar {
+    bar: String,
+    foo_bar: String,
+}
+
+struct CoolNestedChar {
+    bar: String,
+    foo_bar: FooBar,
+
+    temperature: u16,
+    messages: Vec<String>,
+}
+
 fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
@@ -72,6 +85,20 @@ fn main() {
         return;
     };
     log::info!("Registered service 2 with UUID {:?}", service2.0.service_id);
+
+    let char1 = CoolNestedChar {
+        bar: "bar".to_string(),
+        foo_bar: FooBar {
+            bar: "bar".to_string(),
+            foo_bar: "foo_bar".to_string(),
+        },
+        temperature: 0,
+        messages: vec!["Hello".to_string(), "World".to_string()],
+    };
+
+    let qwe: &[u8] = char1.foo_bar.bar.into();
+
+    let ewq = qwe.to_vec();
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));

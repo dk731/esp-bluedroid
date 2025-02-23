@@ -34,7 +34,7 @@ pub struct ServiceInner<'d> {
     pub service_id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<u8, Arc<CharacteristicInner<'d>>>>>,
+    pub characteristics: Arc<RwLock<HashMap<BtUuid, Arc<CharacteristicInner<'d>>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
