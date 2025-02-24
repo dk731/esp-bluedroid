@@ -1,3 +1,4 @@
+use bincode::{Decode, Encode};
 use esp_bluedroid::ble;
 use esp_idf_svc::{
     bt::{
@@ -6,12 +7,15 @@ use esp_idf_svc::{
     },
     hal::prelude::Peripherals,
 };
+use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct FooBar {
     bar: String,
     foo_bar: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CoolNestedChar {
     bar: String,
     foo_bar: FooBar,
@@ -95,10 +99,6 @@ fn main() {
         temperature: 0,
         messages: vec!["Hello".to_string(), "World".to_string()],
     };
-
-    let qwe: &[u8] = char1.foo_bar.bar.into();
-
-    let ewq = qwe.to_vec();
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));

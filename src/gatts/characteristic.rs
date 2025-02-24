@@ -8,6 +8,7 @@ use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus},
     BtUuid,
 };
+// use serde::{Deserialize, Serialize};
 
 use super::{service::ServiceInner, GattsEvent};
 
@@ -21,10 +22,12 @@ impl std::hash::Hash for CharacteristicId {
 pub struct Characteristic<'d>(pub Arc<CharacteristicInner<'d>>);
 
 #[derive(Debug)]
-pub struct CharacteristicInner<'d> {
+pub struct CharacteristicInner<'d>
+// where
+//     T: Serialize + for<'a> Deserialize<'a> + 'static,
+{
     pub service: Weak<ServiceInner<'d>>,
-
-    value: RwLock<impl Serialize, Deserialize>,
+    // value: RwLock<T>,
 }
 
 impl<'d> Characteristic<'d> {
@@ -175,18 +178,18 @@ impl<'d> Characteristic<'d> {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
-        if service
-            .characteristics
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface after registration"))?
-            .insert(123, self.0.clone())
-            .is_some()
-        {
-            // log::warn!(
-            //     "App with ID {:?} already exists, replacing it",
-            //     self.0.service_id
-            // );
-        }
+        // if service
+        //     .characteristics
+        //     .write()
+        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface after registration"))?
+        //     .insert(123, self.0.clone())
+        //     .is_some()
+        // {
+        //     // log::warn!(
+        //     //     "App with ID {:?} already exists, replacing it",
+        //     //     self.0.service_id
+        //     // );
+        // }
 
         Ok(())
     }
