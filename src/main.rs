@@ -52,13 +52,13 @@ fn main() {
         log::error!("Failed to register GATT application");
         return;
     };
-    log::info!("Registered GATT application with ID {:?}", app1.0);
+    // log::info!("Registered GATT application with ID {:?}", app1.0);
 
     let Ok(app2) = ble.gatts.register_app(2) else {
         log::error!("Failed to register GATT application");
         return;
     };
-    log::info!("Registered GATT application with ID {:?}", app2.0);
+    // log::info!("Registered GATT application with ID {:?}", app2.0);
 
     let Ok(service1) = app1.register_service(
         GattServiceId {

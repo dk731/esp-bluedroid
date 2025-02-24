@@ -8,6 +8,7 @@ use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus},
     BtUuid,
 };
+use serde::{Deserialize, Serialize};
 // use serde::{Deserialize, Serialize};
 
 use super::{service::ServiceInner, GattsEvent};
@@ -19,23 +20,46 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-pub struct Characteristic<'d>(pub Arc<CharacteristicInner<'d>>);
-
-#[derive(Debug)]
-pub struct CharacteristicInner<'d>
-// where
-//     T: Serialize + for<'a> Deserialize<'a> + 'static,
-{
-    pub service: Weak<ServiceInner<'d>>,
-    // value: RwLock<T>,
+pub trait AnyCharacteristic {
+    fn as_bytes(&self) -> anyhow::Result<&[u8]>;
+    fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-impl<'d> Characteristic<'d> {
-    pub fn new(service: Arc<ServiceInner<'d>>) -> anyhow::Result<Self> {
+pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de>>(
+    Arc<CharacteristicInner<'d, T>>,
+);
+
+impl<'d, T> AnyCharacteristic for Characteristic<'d, T>
+where
+    T: Serialize + for<'de> Deserialize<'de>,
+{
+    fn as_bytes(&self) -> anyhow::Result<&[u8]> {
+        self.0.
+    }
+
+    fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct CharacteristicInner<'d, T>
+where
+    T: Serialize + for<'a> Deserialize<'a>,
+{
+    pub service: Weak<ServiceInner<'d>>,
+    value: RwLock<T>,
+}
+
+impl<'d, T> Characteristic<'d, T>
+where
+    T: Serialize + for<'de> Deserialize<'de>,
+{
+    pub fn new(service: Arc<ServiceInner<'d>>, value: T) -> anyhow::Result<Self> {
         let service = Arc::downgrade(&service);
         let characterstic = CharacteristicInner {
             service,
-            // parameters,
+            value: RwLock::new(value),
         };
 
         let characterstic = Self(Arc::new(characterstic));

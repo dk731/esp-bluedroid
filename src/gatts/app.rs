@@ -17,7 +17,6 @@ use super::{
 
 pub struct App<'d>(pub Arc<AppInner<'d>>);
 
-#[derive(Debug)]
 pub struct AppInner<'d> {
     pub gatts: Weak<GattsInner<'d>>,
     pub gatt_interface: RwLock<Option<GattInterface>>,

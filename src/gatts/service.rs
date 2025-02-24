@@ -1,6 +1,7 @@
 use std::{
     any,
     collections::HashMap,
+    fmt::Debug,
     mem::discriminant,
     sync::{mpsc, Arc, RwLock, Weak},
 };
@@ -9,10 +10,11 @@ use esp_idf_svc::bt::{
     ble::gatt::{server::AppId, GattId, GattServiceId, GattStatus, Handle, ServiceUuid},
     BtStatus, BtUuid,
 };
+use serde::Serialize;
 
 use super::{
     app::AppInner,
-    characteristic::{Characteristic, CharacteristicInner},
+    characteristic::{AnyCharacteristic, Characteristic, CharacteristicInner},
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
@@ -28,13 +30,12 @@ impl std::hash::Hash for ServiceId {
     }
 }
 
-#[derive(Debug)]
 pub struct ServiceInner<'d> {
     pub app: Weak<AppInner<'d>>,
     pub service_id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<BtUuid, Arc<CharacteristicInner<'d>>>>>,
+    pub characteristics: Arc<RwLock<HashMap<BtUuid, Arc<dyn AnyCharacteristic>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
@@ -188,7 +189,11 @@ impl<'d> Service<'d> {
         Ok(())
     }
 
-    pub fn register_characteristic(&self) -> anyhow::Result<Characteristic<'d>> {
-        Characteristic::new(self.0.clone())
+    pub fn register_characteristic<T>(&self) -> anyhow::Result<Characteristic<'d, T>>
+    where
+        T: Serialize + for<'a> serde::Deserialize<'a>,
+    {
+        // Characteristic::new(self.0.clone())
+        todo!()
     }
 }
