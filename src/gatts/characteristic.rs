@@ -21,26 +21,50 @@ impl std::hash::Hash for CharacteristicId {
 }
 
 pub trait AnyCharacteristic {
-    fn as_bytes(&self) -> anyhow::Result<&[u8]>;
+    fn as_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-pub trait GattChatTemp: Serialize + for<'de> Deserialize<'de> {}
+pub trait GattChatTemp: Serialize + for<'de> Deserialize<'de> + Clone {}
 
 pub struct Characteristic<'d, T: GattChatTemp>(Arc<CharacteristicInner<'d, T>>);
 
 impl<'d, T: GattChatTemp> AnyCharacteristic for Characteristic<'d, T> {
-    fn as_bytes(&self) -> anyhow::Result<&[u8]> {
-        // self.0
-        //     .value
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
-
-        todo!()
+    fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        bincode::serde::encode_to_vec(
+            self.0
+                .value
+                .read()
+                .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
+                .clone(),
+            bincode::config::standard(),
+        )
+        .map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to serialize characteristic value to bytes: {:?}",
+                err
+            )
+        })
     }
 
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
-        todo!()
+        let (value, _): (T, usize) =
+            bincode::serde::decode_from_slice(data, bincode::config::standard()).map_err(
+                |err| {
+                    anyhow::anyhow!(
+                        "Failed to deserialize bytes to characteristic value: {:?}",
+                        err
+                    )
+                },
+            )?;
+
+        self.0
+            .value
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?
+            .clone_from(&value);
+
+        Ok(())
     }
 }
 
