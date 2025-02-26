@@ -14,7 +14,7 @@ use serde::Serialize;
 
 use super::{
     app::AppInner,
-    characteristic::{AnyCharacteristic, Characteristic, CharacteristicInner},
+    characteristic::{AnyCharacteristic, Characteristic, CharacteristicInner, GattChatTemp},
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
@@ -189,10 +189,9 @@ impl<'d> Service<'d> {
         Ok(())
     }
 
-    pub fn register_characteristic<T>(&self) -> anyhow::Result<Characteristic<'d, T>>
-    where
-        T: Serialize + for<'a> serde::Deserialize<'a>,
-    {
+    pub fn register_characteristic<T: GattChatTemp>(
+        &self,
+    ) -> anyhow::Result<Characteristic<'d, T>> {
         // Characteristic::new(self.0.clone())
         todo!()
     }

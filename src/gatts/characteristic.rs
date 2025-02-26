@@ -25,16 +25,18 @@ pub trait AnyCharacteristic {
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de>>(
-    Arc<CharacteristicInner<'d, T>>,
-);
+pub trait GattChatTemp: Serialize + for<'de> Deserialize<'de> {}
 
-impl<'d, T> AnyCharacteristic for Characteristic<'d, T>
-where
-    T: Serialize + for<'de> Deserialize<'de>,
-{
+pub struct Characteristic<'d, T: GattChatTemp>(Arc<CharacteristicInner<'d, T>>);
+
+impl<'d, T: GattChatTemp> AnyCharacteristic for Characteristic<'d, T> {
     fn as_bytes(&self) -> anyhow::Result<&[u8]> {
-        self.0.
+        // self.0
+        //     .value
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
+
+        todo!()
     }
 
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
@@ -51,10 +53,7 @@ where
     value: RwLock<T>,
 }
 
-impl<'d, T> Characteristic<'d, T>
-where
-    T: Serialize + for<'de> Deserialize<'de>,
-{
+impl<'d, T: GattChatTemp> Characteristic<'d, T> {
     pub fn new(service: Arc<ServiceInner<'d>>, value: T) -> anyhow::Result<Self> {
         let service = Arc::downgrade(&service);
         let characterstic = CharacteristicInner {
