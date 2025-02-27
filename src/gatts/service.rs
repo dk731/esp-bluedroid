@@ -32,7 +32,7 @@ impl std::hash::Hash for ServiceId {
 
 pub struct ServiceInner<'d> {
     pub app: Weak<AppInner<'d>>,
-    pub service_id: GattServiceId,
+    pub id: GattServiceId,
     pub num_handles: u16,
 
     pub characteristics: Arc<RwLock<HashMap<BtUuid, Arc<dyn AnyCharacteristic>>>>,
@@ -48,7 +48,7 @@ impl<'d> Service<'d> {
         let app = Arc::downgrade(&app);
         let service = ServiceInner {
             app,
-            service_id,
+            id: service_id,
             handle: RwLock::new(None),
             num_handles,
             characteristics: Arc::new(RwLock::new(HashMap::new())),
@@ -100,9 +100,7 @@ impl<'d> Service<'d> {
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
             .insert(callback_key.clone(), tx.clone());
 
-        gatts
-            .gatts
-            .create_service(gatt_interface, &self.0.service_id, 10)?;
+        gatts.gatts.create_service(gatt_interface, &self.0.id, 10)?;
 
         let callback_result = loop {
             match rx.recv_timeout(std::time::Duration::from_secs(5)) {
@@ -114,33 +112,35 @@ impl<'d> Service<'d> {
                         service_id,
                     },
                 )) => {
-                    if service_id == self.0.service_id {
-                        if status != GattStatus::Ok {
-                            break Err(anyhow::anyhow!(
-                                "Failed to register GATT application: {:?}",
-                                status
-                            ));
-                        }
+                    if service_id != self.0.id {
+                        continue;
+                    }
 
-                        match self.0.handle.write().map_err(|_| {
-                            anyhow::anyhow!("Failed to write Gatt interface after registration")
-                        }) {
-                            Ok(mut handle) => {
-                                if handle.is_some() {
-                                    break Err(anyhow::anyhow!(
+                    if status != GattStatus::Ok {
+                        break Err(anyhow::anyhow!(
+                            "Failed to register GATT application: {:?}",
+                            status
+                        ));
+                    }
+
+                    match self.0.handle.write().map_err(|_| {
+                        anyhow::anyhow!("Failed to write Gatt interface after registration")
+                    }) {
+                        Ok(mut handle) => {
+                            if handle.is_some() {
+                                break Err(anyhow::anyhow!(
                                         "Service handle already set, likely Service was not initialized properly"
                                     ));
-                                }
-                                *handle = Some(service_handle);
-                                break Ok(());
                             }
-                            Err(_) => {
-                                break Err(anyhow::anyhow!(
-                                    "Failed to write Gatt interface after registration"
-                                ));
-                            }
-                        };
-                    }
+                            *handle = Some(service_handle);
+                            break Ok(());
+                        }
+                        Err(_) => {
+                            break Err(anyhow::anyhow!(
+                                "Failed to write Gatt interface after registration"
+                            ));
+                        }
+                    };
                 }
                 Ok(_) => {
                     break Err(anyhow::anyhow!(
@@ -177,13 +177,10 @@ impl<'d> Service<'d> {
             .services
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?
-            .insert(ServiceId(self.0.service_id.clone()), self.0.clone())
+            .insert(ServiceId(self.0.id.clone()), self.0.clone())
             .is_some()
         {
-            log::warn!(
-                "App with ID {:?} already exists, replacing it",
-                self.0.service_id
-            );
+            log::warn!("App with ID {:?} already exists, replacing it", self.0.id);
         }
 
         Ok(())
@@ -191,6 +188,7 @@ impl<'d> Service<'d> {
 
     pub fn register_characteristic<T: GattChatTemp>(
         &self,
+        value: T,
     ) -> anyhow::Result<Characteristic<'d, T>> {
         // Characteristic::new(self.0.clone())
         todo!()

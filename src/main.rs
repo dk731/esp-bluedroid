@@ -73,7 +73,7 @@ fn main() {
         log::error!("Failed to register service 1");
         return;
     };
-    log::info!("Registered service 1 with UUID {:?}", service1.0.service_id);
+    log::info!("Registered service 1 with UUID {:?}", service1.0.id);
 
     let Ok(service2) = app1.register_service(
         GattServiceId {
@@ -88,7 +88,7 @@ fn main() {
         log::error!("Failed to register service 1");
         return;
     };
-    log::info!("Registered service 2 with UUID {:?}", service2.0.service_id);
+    log::info!("Registered service 2 with UUID {:?}", service2.0.id);
 
     let char1 = CoolNestedChar {
         bar: "bar".to_string(),
@@ -98,6 +98,11 @@ fn main() {
         },
         temperature: 0,
         messages: vec!["Hello".to_string(), "World".to_string()],
+    };
+
+    let Ok(char1) = service1.register_characteristic(char1) else {
+        log::error!("Failed to register characteristic 1");
+        return;
     };
 
     loop {

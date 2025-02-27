@@ -1,17 +1,20 @@
 use std::{
     any,
     mem::discriminant,
-    sync::{Arc, RwLock, Weak},
+    sync::{mpsc, Arc, RwLock, Weak},
 };
 
-use esp_idf_svc::bt::{
-    ble::gatt::{GattId, GattServiceId, GattStatus},
-    BtUuid,
+use esp_idf_svc::{
+    bt::{
+        ble::gatt::{AutoResponse, GattCharacteristic, GattId, GattServiceId, GattStatus, Handle},
+        BtUuid,
+    },
+    hal::can::config,
 };
 use serde::{Deserialize, Serialize};
 // use serde::{Deserialize, Serialize};
 
-use super::{service::ServiceInner, GattsEvent};
+use super::{event::GattsEventMessage, service::ServiceInner, GattsEvent};
 
 pub struct CharacteristicId(BtUuid);
 impl std::hash::Hash for CharacteristicId {
@@ -69,12 +72,12 @@ impl<'d, T: GattChatTemp> AnyCharacteristic for Characteristic<'d, T> {
 }
 
 #[derive(Debug)]
-pub struct CharacteristicInner<'d, T>
-where
-    T: Serialize + for<'a> Deserialize<'a>,
-{
+pub struct CharacteristicInner<'d, T: GattChatTemp> {
     pub service: Weak<ServiceInner<'d>>,
     value: RwLock<T>,
+
+    pub id: BtUuid,
+    pub handle: RwLock<Option<Handle>>,
 }
 
 impl<'d, T: GattChatTemp> Characteristic<'d, T> {
@@ -83,28 +86,31 @@ impl<'d, T: GattChatTemp> Characteristic<'d, T> {
         let characterstic = CharacteristicInner {
             service,
             value: RwLock::new(value),
+            handle: RwLock::new(None),
+            id: todo!(),
         };
 
         let characterstic = Self(Arc::new(characterstic));
 
-        characterstic.register_bluedroid()?;
+        characterstic.register_bluedroid_characteristic()?;
+        characterstic.register_bluedroid_descriptors()?;
+
         characterstic.register_in_parent()?;
 
         Ok(characterstic)
     }
 
-    fn register_bluedroid(&self) -> anyhow::Result<()> {
-        // let (tx, rx) = mpsc::sync_channel(1);
-        let callback_key = discriminant(&GattsEvent::ServiceCreated {
+    fn register_bluedroid_descriptors(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn register_bluedroid_characteristic(&self) -> anyhow::Result<()> {
+        let (tx, rx) = mpsc::sync_channel(1);
+        let callback_key = discriminant(&GattsEvent::CharacteristicAdded {
             status: GattStatus::Busy,
+            attr_handle: 0,
             service_handle: 0,
-            service_id: GattServiceId {
-                id: GattId {
-                    uuid: BtUuid::uuid16(0),
-                    inst_id: 0,
-                },
-                is_primary: false,
-            },
+            char_uuid: BtUuid::uuid16(0),
         });
 
         let service = self
@@ -132,80 +138,96 @@ impl<'d, T: GattChatTemp> Characteristic<'d, T> {
                 "Gatt interface is None, likly App was not initialized properly"
             ))?;
 
-        let gatts = &app
+        let gatts = app
             .gatts
             .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?
-            .gatts;
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .insert(callback_key, tx);
 
-        // gatts.add_characteristic(service_handle, characteristic, data)
+        let current_data = bincode::serde::encode_to_vec(
+            self.0
+                .value
+                .read()
+                .map_err(|_| {
+                    anyhow::anyhow!("Failed to read characteristic value after registration")
+                })?
+                .clone(),
+            bincode::config::standard(),
+        )?;
 
-        // gatts
-        //     .gatts
-        //     .add_characteristic(service_handle, characteristic, data)?;
-        // gatts.gatts.add_descriptor(service_handle, descriptor)
-        // gatts.gatts
+        gatts.gatts.add_characteristic(
+            service_handle,
+            &GattCharacteristic {
+                uuid: todo!(),
+                permissions: todo!(),
+                properties: todo!(),
+                max_len: todo!(),
+                auto_rsp: AutoResponse::ByApp,
+            },
+            &current_data,
+        )?;
 
-        // gatts
-        //     .gatts_events
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
-        //     .insert(callback_key.clone(), tx.clone());
+        let callback_result = loop {
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(GattsEventMessage(
+                    _,
+                    GattsEvent::CharacteristicAdded {
+                        status,
+                        attr_handle,
+                        service_handle,
+                        char_uuid,
+                    },
+                )) => {
+                    if char_uuid != self.0.id {
+                        continue;
+                    }
 
-        // gatts
-        //     .gatts
-        //     .create_service(gatt_interface, &self.0.service_id, 10)?;
+                    if service_handle != service_handle {
+                        continue;
+                    }
 
-        // let callback_result = loop {
-        //     match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-        //         Ok(GattsEventMessage(
-        //             _,
-        //             GattsEvent::ServiceCreated {
-        //                 status,
-        //                 service_handle,
-        //                 service_id,
-        //             },
-        //         )) => {
-        //             if service_id == self.0.service_id {
-        //                 if status != GattStatus::Ok {
-        //                     break Err(anyhow::anyhow!(
-        //                         "Failed to register GATT application: {:?}",
-        //                         status
-        //                     ));
-        //                 }
+                    if status != GattStatus::Ok {
+                        break Err(anyhow::anyhow!(
+                            "Failed to register GATT application: {:?}",
+                            status
+                        ));
+                    }
 
-        //                 match self.0.handle.write().map_err(|_| {
-        //                     anyhow::anyhow!("Failed to write Gatt interface after registration")
-        //                 }) {
-        //                     Ok(mut handle) => {
-        //                         if handle.is_some() {
-        //                             break Err(anyhow::anyhow!(
-        //                                 "Service handle already set, likely Service was not initialized properly"
-        //                             ));
-        //                         }
-        //                         *handle = Some(service_handle);
-        //                         break Ok(());
-        //                     }
-        //                     Err(_) => {
-        //                         break Err(anyhow::anyhow!(
-        //                             "Failed to write Gatt interface after registration"
-        //                         ));
-        //                     }
-        //                 };
-        //             }
-        //         }
-        //         Ok(_) => {
-        //             break Err(anyhow::anyhow!(
-        //                 "Received unexpected GATT application registration event"
-        //             ));
-        //         }
-        //         Err(_) => {
-        //             break Err(anyhow::anyhow!(
-        //                 "Timed out waiting for GATT application registration event"
-        //             ));
-        //         }
-        //     }
-        // };
+                    match self.0.handle.write().map_err(|_| {
+                        anyhow::anyhow!("Failed to write Gatt interface after registration")
+                    }) {
+                        Ok(mut handle) => {
+                            if handle.is_some() {
+                                break Err(anyhow::anyhow!(
+                                    "Gatt interface is already set, likely App was not initialized properly"
+                                ));
+                            }
+                            *handle = Some(attr_handle);
+                            break Ok(());
+                        }
+                        Err(_) => {
+                            break Err(anyhow::anyhow!(
+                                "Failed to write Gatt interface after registration"
+                            ));
+                        }
+                    };
+                }
+                Ok(_) => {
+                    break Err(anyhow::anyhow!(
+                        "Received unexpected GATT application registration event"
+                    ));
+                }
+                Err(_) => {
+                    break Err(anyhow::anyhow!(
+                        "Timed out waiting for GATT application registration event"
+                    ));
+                }
+            }
+        };
 
         // gatts
         //     .gatts_events
@@ -238,12 +260,6 @@ impl<'d, T: GattChatTemp> Characteristic<'d, T> {
         //     // );
         // }
 
-        Ok(())
-    }
-
-    pub fn register_descriptor(&self) -> anyhow::Result<()> {
-        // let gatts = self.gatts.upgrade().ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-        // gatts.register_service(self.id)?;
         Ok(())
     }
 }
