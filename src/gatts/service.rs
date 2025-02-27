@@ -10,11 +10,11 @@ use esp_idf_svc::bt::{
     ble::gatt::{server::AppId, GattId, GattServiceId, GattStatus, Handle, ServiceUuid},
     BtStatus, BtUuid,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{AnyCharacteristic, Characteristic, CharacteristicInner, GattChatTemp},
+    characteristic::{AnyCharacteristic, Characteristic, CharacteristicId, CharacteristicInner},
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
@@ -35,7 +35,7 @@ pub struct ServiceInner<'d> {
     pub id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<BtUuid, Arc<dyn AnyCharacteristic>>>>,
+    pub characteristics: Arc<RwLock<HashMap<CharacteristicId, Arc<dyn AnyCharacteristic>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
@@ -186,10 +186,10 @@ impl<'d> Service<'d> {
         Ok(())
     }
 
-    pub fn register_characteristic<T: GattChatTemp>(
-        &self,
-        value: T,
-    ) -> anyhow::Result<Characteristic<'d, T>> {
+    pub fn register_characteristic<T>(&self, value: T) -> anyhow::Result<Characteristic<'d, T>>
+    where
+        T: Serialize + for<'de> Deserialize<'de> + Clone,
+    {
         // Characteristic::new(self.0.clone())
         todo!()
     }
