@@ -1,5 +1,4 @@
 use std::{
-    any,
     collections::HashMap,
     fmt::Debug,
     mem::discriminant,
@@ -7,18 +6,15 @@ use std::{
 };
 
 use esp_idf_svc::bt::{
-    ble::gatt::{server::AppId, GattId, GattServiceId, GattStatus, Handle, ServiceUuid},
-    BtStatus, BtUuid,
+    ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
+    BtUuid,
 };
 use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{
-        AnyCharacteristic, Characteristic, CharacteristicConfig, CharacteristicId,
-        CharacteristicInner,
-    },
-    GattsEvent, GattsEventMessage, GattsInner,
+    characteristic::{AnyCharacteristic, Characteristic, CharacteristicConfig, CharacteristicId},
+    GattsEvent, GattsEventMessage,
 };
 
 pub struct Service<'d>(pub Arc<ServiceInner<'d>>);
@@ -211,7 +207,7 @@ impl<'d> Service<'d> {
             .0
             .app
             .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
 
         let gatts = app
             .gatts
@@ -222,7 +218,7 @@ impl<'d> Service<'d> {
             .0
             .handle
             .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
             .ok_or(anyhow::anyhow!(
                 "Service handle is None, likly Service was not initialized properly"
             ))?;
@@ -249,22 +245,87 @@ impl<'d> Service<'d> {
                     }
 
                     if status != GattStatus::Ok {
-                        break Err(anyhow::anyhow!(
-                            "Failed to register GATT application: {:?}",
-                            status
-                        ));
+                        break Err(anyhow::anyhow!("Failed to start service: {:?}", status));
                     }
                     break Ok(());
                 }
                 Ok(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event"
-                    ));
+                    break Err(anyhow::anyhow!("Received unexpected GATT"));
                 }
                 Err(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Timed out waiting for GATT application registration event"
-                    ));
+                    break Err(anyhow::anyhow!("Timed out waiting for GATT"));
+                }
+            }
+        };
+
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .remove(&callback_key);
+
+        callback_result?;
+
+        Ok(())
+    }
+
+    pub fn stop(&self) -> anyhow::Result<()> {
+        let (tx, rx) = mpsc::sync_channel(1);
+        let callback_key = discriminant(&GattsEvent::ServiceStopped {
+            status: GattStatus::Busy,
+            service_handle: 0,
+        });
+        let app = self
+            .0
+            .app
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
+
+        let gatts = app
+            .gatts
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+
+        let handle = self
+            .0
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
+            .ok_or(anyhow::anyhow!(
+                "Service handle is None, likly Service was not initialized properly"
+            ))?;
+
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .insert(callback_key, tx);
+
+        gatts.gatts.stop_service(handle.clone())?;
+
+        let callback_result = loop {
+            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                Ok(GattsEventMessage(
+                    _,
+                    GattsEvent::ServiceStarted {
+                        status,
+                        service_handle,
+                    },
+                )) => {
+                    if service_handle != handle {
+                        continue;
+                    }
+
+                    if status != GattStatus::Ok {
+                        break Err(anyhow::anyhow!("Failed to stop service: {:?}", status));
+                    }
+                    break Ok(());
+                }
+                Ok(_) => {
+                    break Err(anyhow::anyhow!("Received unexpected GATT"));
+                }
+                Err(_) => {
+                    break Err(anyhow::anyhow!("Timed out waiting for GATT"));
                 }
             }
         };
