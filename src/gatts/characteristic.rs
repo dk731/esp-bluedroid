@@ -1,10 +1,9 @@
 use std::{
-    any,
     mem::discriminant,
     sync::{mpsc, Arc, RwLock, Weak},
 };
 
-use enumset::{enum_set, EnumSet};
+use enumset::EnumSet;
 use esp_idf_svc::bt::{
     ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
     BtUuid,
@@ -81,7 +80,7 @@ pub trait AnyCharacteristic<'d> {
 }
 
 pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de> + Clone + 'static>(
-    Arc<CharacteristicInner<'d, T>>,
+    pub Arc<CharacteristicInner<'d, T>>,
 );
 
 impl<'d, T> AnyCharacteristic<'d> for CharacteristicInner<'d, T>

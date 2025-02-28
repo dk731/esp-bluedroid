@@ -115,7 +115,10 @@ fn main() {
         log::error!("Failed to register characteristic 1");
         return;
     };
-    log::info!("Registered characteristic 1 with UUID");
+    log::info!(
+        "Registered characteristic 1 with UUID: {:?}",
+        char1.0.config.uuid
+    );
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));
