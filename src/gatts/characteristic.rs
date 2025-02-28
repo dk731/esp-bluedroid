@@ -67,6 +67,7 @@ impl Into<GattCharacteristic> for &CharacteristicConfig {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
 pub struct CharacteristicId(BtUuid);
 impl std::hash::Hash for CharacteristicId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -74,23 +75,22 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-pub trait AnyCharacteristic {
+pub trait AnyCharacteristic<'d> {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de> + Clone>(
+pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de> + Clone + 'static>(
     Arc<CharacteristicInner<'d, T>>,
 );
 
-impl<'d, T> AnyCharacteristic for Characteristic<'d, T>
+impl<'d, T> AnyCharacteristic<'d> for CharacteristicInner<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + 'static,
 {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
         bincode::serde::encode_to_vec(
-            self.0
-                .value
+            self.value
                 .read()
                 .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
                 .clone(),
@@ -115,8 +115,7 @@ where
                 },
             )?;
 
-        self.0
-            .value
+        self.value
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?
             .clone_from(&value);
@@ -127,7 +126,7 @@ where
 
 pub struct CharacteristicInner<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + 'static,
 {
     pub service: Weak<ServiceInner<'d>>,
     value: RwLock<T>,
@@ -138,7 +137,7 @@ where
 
 impl<'d, T> Characteristic<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + 'static,
 {
     pub fn new(
         service: Arc<ServiceInner<'d>>,
@@ -306,13 +305,13 @@ where
             .characteristics
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface after registration"))?
-            .insert(123, self.0.clone())
+            .insert(CharacteristicId(self.0.config.uuid.clone()), self.0.clone())
             .is_some()
         {
-            // log::warn!(
-            //     "App with ID {:?} already exists, replacing it",
-            //     self.0.service_id
-            // );
+            log::warn!(
+                "Characteristic with UUID {:?} already exists, replacing it",
+                self.0.config.uuid
+            );
         }
 
         Ok(())

@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{AnyCharacteristic, Characteristic, CharacteristicId, CharacteristicInner},
+    characteristic::{
+        AnyCharacteristic, Characteristic, CharacteristicConfig, CharacteristicId,
+        CharacteristicInner,
+    },
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
@@ -35,7 +38,8 @@ pub struct ServiceInner<'d> {
     pub id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<CharacteristicId, Arc<dyn AnyCharacteristic>>>>,
+    pub characteristics:
+        Arc<RwLock<HashMap<CharacteristicId, Arc<dyn AnyCharacteristic<'d> + 'd>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
@@ -186,11 +190,14 @@ impl<'d> Service<'d> {
         Ok(())
     }
 
-    pub fn register_characteristic<T>(&self, value: T) -> anyhow::Result<Characteristic<'d, T>>
+    pub fn register_characteristic<T>(
+        &self,
+        config: CharacteristicConfig,
+        value: T,
+    ) -> anyhow::Result<Characteristic<'d, T>>
     where
         T: Serialize + for<'de> Deserialize<'de> + Clone,
     {
-        // Characteristic::new(self.0.clone())
-        todo!()
+        Characteristic::new(self.0.clone(), config, value)
     }
 }

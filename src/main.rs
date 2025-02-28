@@ -1,5 +1,5 @@
 use bincode::{Decode, Encode};
-use esp_bluedroid::ble;
+use esp_bluedroid::{ble, gatts::characteristic::CharacteristicConfig};
 use esp_idf_svc::{
     bt::{
         ble::gatt::{GattId, GattServiceId},
@@ -100,10 +100,22 @@ fn main() {
         messages: vec!["Hello".to_string(), "World".to_string()],
     };
 
-    let Ok(char1) = service1.register_characteristic(char1) else {
+    let Ok(char1) = service1.register_characteristic(
+        CharacteristicConfig {
+            uuid: BtUuid::uuid128(0x12345678901234567890123456789014),
+            value_max_len: 100,
+            readable: true,
+            writable: true,
+            broadcasted: true,
+            notifiable: true,
+            indicateable: true,
+        },
+        char1,
+    ) else {
         log::error!("Failed to register characteristic 1");
         return;
     };
+    log::info!("Registered characteristic 1 with UUID");
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));

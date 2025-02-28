@@ -1,4 +1,4 @@
 pub mod ble;
 pub mod example;
-mod gap;
-mod gatts;
+pub mod gap;
+pub mod gatts;
