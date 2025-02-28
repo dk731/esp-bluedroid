@@ -28,81 +28,30 @@ fn main() {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    // example::example::main().unwrap_or_else(|err| {
-    //     log::error!("Error in example: {:?}", err);
-    // });
-
-    let Ok(peripherals) = Peripherals::take() else {
-        log::error!("Failed to take peripherals");
-        return;
-    };
-
-    let Ok(ble) = ble::Ble::new(peripherals.modem) else {
-        log::error!("Failed to create BLE instance");
-        return;
-    };
-
-    if let Err(err) = ble.gap.start_advertising() {
-        log::error!("Failed to start advertising: {:?}", err);
-        return;
+    if let Err(e) = run_ble_example() {
+        log::error!("Error: {:?}", e);
     }
-    log::info!("Started advertising");
+}
 
-    let Ok(app1) = ble.gatts.register_app(1) else {
-        log::error!("Failed to register GATT application");
-        return;
-    };
-    // log::info!("Registered GATT application with ID {:?}", app1.0);
+fn run_ble_example() -> anyhow::Result<()> {
+    let peripherals = Peripherals::take()?;
+    let ble = ble::Ble::new(peripherals.modem)?;
 
-    let Ok(app2) = ble.gatts.register_app(2) else {
-        log::error!("Failed to register GATT application");
-        return;
-    };
-    // log::info!("Registered GATT application with ID {:?}", app2.0);
-
-    let Ok(service1) = app1.register_service(
+    let app = ble.gatts.register_app(0)?;
+    let service = app.register_service(
         GattServiceId {
             id: GattId {
-                uuid: BtUuid::uuid128(0x12345678901234567890123456789012),
+                uuid: BtUuid::uuid128(1),
                 inst_id: 0,
             },
             is_primary: true,
         },
         10,
-    ) else {
-        log::error!("Failed to register service 1");
-        return;
-    };
-    log::info!("Registered service 1 with UUID {:?}", service1.0.id);
+    )?;
 
-    let Ok(service2) = app1.register_service(
-        GattServiceId {
-            id: GattId {
-                uuid: BtUuid::uuid128(0x12345678901234567890123456789013),
-                inst_id: 0,
-            },
-            is_primary: true,
-        },
-        20,
-    ) else {
-        log::error!("Failed to register service 1");
-        return;
-    };
-    log::info!("Registered service 2 with UUID {:?}", service2.0.id);
-
-    let char1 = CoolNestedChar {
-        bar: "bar".to_string(),
-        foo_bar: FooBar {
-            bar: "bar".to_string(),
-            foo_bar: "foo_bar".to_string(),
-        },
-        temperature: 0,
-        messages: vec!["Hello".to_string(), "World".to_string()],
-    };
-
-    let Ok(char1) = service1.register_characteristic(
+    let char1 = service.register_characteristic(
         CharacteristicConfig {
-            uuid: BtUuid::uuid128(0x12345678901234567890123456789014),
+            uuid: BtUuid::uuid128(2),
             value_max_len: 100,
             readable: true,
             writable: true,
@@ -110,18 +59,16 @@ fn main() {
             notifiable: true,
             indicateable: true,
         },
-        char1,
-    ) else {
-        log::error!("Failed to register characteristic 1");
-        return;
-    };
-    log::info!(
-        "Registered characteristic 1 with UUID: {:?}",
-        char1.0.config.uuid
-    );
+        "Hello, world!".to_string(),
+    )?;
+
+    service.start()?;
+    ble.gap.start_advertising()?;
 
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));
         log::info!("Still running...");
     }
+
+    Ok(())
 }
