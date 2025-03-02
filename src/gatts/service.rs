@@ -57,9 +57,33 @@ impl<'d> Service<'d> {
         let service = Self(Arc::new(service));
 
         service.register_bluedroid()?;
+        service.configure_read_write_events()?;
         service.register_in_parent()?;
 
         Ok(service)
+    }
+
+    fn configure_read_write_events(&self) -> anyhow::Result<()> {
+        let app = self
+            .0
+            .app
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
+
+        let gatt = app
+            .gatts
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+
+        let gatts_events = gatt
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?;
+
+        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = mpsc::sync_channel(1);
+
+        Ok(())
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
