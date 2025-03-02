@@ -191,13 +191,6 @@ where
             .app
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-        let gatt_interface = app
-            .gatt_interface
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface after registration"))?
-            .ok_or(anyhow::anyhow!(
-                "Gatt interface is None, likly App was not initialized properly"
-            ))?;
 
         let gatts = app
             .gatts

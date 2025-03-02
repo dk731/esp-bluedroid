@@ -1,14 +1,10 @@
 use std::{
-    any,
     collections::HashMap,
     mem::discriminant,
     sync::{mpsc, Arc, RwLock, Weak},
 };
 
-use esp_idf_svc::bt::{
-    ble::gatt::{server::AppId, GattInterface, GattServiceId, GattStatus},
-    BtUuid,
-};
+use esp_idf_svc::bt::ble::gatt::{server::AppId, GattInterface, GattServiceId, GattStatus};
 
 use super::{
     service::{Service, ServiceId, ServiceInner},
