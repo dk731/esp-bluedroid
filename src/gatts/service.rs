@@ -5,6 +5,7 @@ use std::{
     sync::{mpsc, Arc, RwLock, Weak},
 };
 
+use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
     BtUuid,
@@ -80,8 +81,7 @@ impl<'d> Service<'d> {
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?;
 
-        let (tx, rx) = mpsc::sync_channel(1);
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = bounded(0);
 
         Ok(())
     }

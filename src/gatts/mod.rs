@@ -23,8 +23,9 @@ pub struct GattsInner<'d> {
     gatts: EspGatts<'d, svc::bt::Ble, ExtBtDriver<'d>>,
     apps: Arc<RwLock<HashMap<AppId, Arc<AppInner<'d>>>>>,
 
-    gatts_events:
-        Arc<RwLock<HashMap<Discriminant<GattsEvent>, mpsc::SyncSender<GattsEventMessage>>>>,
+    gatts_events: Arc<
+        RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
+    >,
 }
 
 impl<'d> Gatts<'d> {
