@@ -1,8 +1,9 @@
 use std::{
     mem::discriminant,
-    sync::{mpsc, Arc, RwLock, Weak},
+    sync::{Arc, RwLock, Weak},
 };
 
+use crossbeam_channel::bounded;
 use enumset::EnumSet;
 use esp_idf_svc::bt::{
     ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
@@ -166,7 +167,7 @@ where
     }
 
     fn register_bluedroid_characteristic(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = bounded(0);
         let callback_key = discriminant(&GattsEvent::CharacteristicAdded {
             status: GattStatus::Busy,
             attr_handle: 0,

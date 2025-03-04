@@ -81,13 +81,11 @@ impl<'d> Service<'d> {
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?;
 
-        let (tx, rx) = bounded(0);
-
         Ok(())
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = bounded(0);
         let callback_key = discriminant(&GattsEvent::ServiceCreated {
             status: GattStatus::Busy,
             service_handle: 0,
@@ -222,7 +220,7 @@ impl<'d> Service<'d> {
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = bounded(0);
         let callback_key = discriminant(&GattsEvent::ServiceStarted {
             status: GattStatus::Busy,
             service_handle: 0,
@@ -294,7 +292,7 @@ impl<'d> Service<'d> {
     }
 
     pub fn stop(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = bounded(0);
         let callback_key = discriminant(&GattsEvent::ServiceStopped {
             status: GattStatus::Busy,
             service_handle: 0,

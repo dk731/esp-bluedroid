@@ -1,9 +1,10 @@
 use std::{
     collections::HashMap,
     mem::discriminant,
-    sync::{mpsc, Arc, RwLock, Weak},
+    sync::{Arc, RwLock, Weak},
 };
 
+use crossbeam_channel::bounded;
 use esp_idf_svc::bt::ble::gatt::{server::AppId, GattInterface, GattServiceId, GattStatus};
 
 use super::{
@@ -40,7 +41,7 @@ impl<'d> App<'d> {
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::sync_channel(1);
+        let (tx, rx) = bounded(0);
         let callback_key = discriminant(&GattsEvent::ServiceRegistered {
             status: GattStatus::Busy,
             app_id: 0,
