@@ -167,7 +167,7 @@ where
     }
 
     fn register_bluedroid_characteristic(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(0);
+        let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::CharacteristicAdded {
             status: GattStatus::Busy,
             attr_handle: 0,

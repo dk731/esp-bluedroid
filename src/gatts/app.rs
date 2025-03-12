@@ -41,7 +41,7 @@ impl<'d> App<'d> {
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(0);
+        let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceRegistered {
             status: GattStatus::Busy,
             app_id: 0,

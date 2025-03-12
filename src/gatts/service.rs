@@ -85,7 +85,7 @@ impl<'d> Service<'d> {
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(0);
+        let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceCreated {
             status: GattStatus::Busy,
             service_handle: 0,
@@ -220,7 +220,7 @@ impl<'d> Service<'d> {
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(0);
+        let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceStarted {
             status: GattStatus::Busy,
             service_handle: 0,
@@ -292,7 +292,7 @@ impl<'d> Service<'d> {
     }
 
     pub fn stop(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(0);
+        let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceStopped {
             status: GattStatus::Busy,
             service_handle: 0,
