@@ -8,7 +8,7 @@ use std::{
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
-    BtUuid,
+    BdAddr, BtUuid,
 };
 use serde::{Deserialize, Serialize};
 
@@ -64,7 +64,7 @@ impl<'d> Service<'d> {
         Ok(service)
     }
 
-    fn configure_read_write_events(&self) -> anyhow::Result<()> {
+    fn configure_read_events(&self) -> anyhow::Result<()> {
         let app = self
             .0
             .app
@@ -76,10 +76,32 @@ impl<'d> Service<'d> {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
-        let gatts_events = gatt
+        let mut gatts_events = gatt
             .gatts_events
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?;
+
+        let (tx, rx) = bounded(1);
+        gatts_events.insert(
+            discriminant(&GattsEvent::Read {
+                conn_id: 0,
+                trans_id: 0,
+                addr: BdAddr::from_bytes([0; 6]),
+                handle: 0,
+                offset: 0,
+                is_long: false,
+                need_rsp: true,
+            }),
+            tx,
+        );
+
+        let service = Arc::downgrade(&self.0);
+        std::thread::spawn(move || {
+            let Some(service) = service.upgrade() else {
+                log::error!("Failed to upgrade service in read events thread");
+                return;
+            };
+        });
 
         Ok(())
     }

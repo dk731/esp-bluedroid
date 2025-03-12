@@ -35,11 +35,16 @@ impl<'d> Gap<'d> {
     }
 
     pub fn init_callback(&self) -> anyhow::Result<()> {
-        let callback_channels_map = self.gap_events.clone();
+        let callback_channels_map = Arc::downgrade(&self.gap_events);
         self.gap.subscribe(move |e| {
+            let Some(callback_channels) = callback_channels_map.upgrade() else {
+                log::error!("Failed to upgrade weak reference to events map");
+                return;
+            };
+
             log::info!("Received event {:?}", e);
 
-            let Ok(map_lock) = callback_channels_map.read() else {
+            let Ok(map_lock) = callback_channels.read() else {
                 log::error!("Failed to acquire write lock for events map");
                 return;
             };
