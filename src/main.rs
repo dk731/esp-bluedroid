@@ -59,7 +59,15 @@ fn run_ble_example() -> anyhow::Result<()> {
             notifiable: true,
             indicateable: true,
         },
-        "Hello, world!".to_string(),
+        CoolNestedChar {
+            bar: "bar".to_string(),
+            foo_bar: FooBar {
+                bar: "bar".to_string(),
+                foo_bar: "foo_bar".to_string(),
+            },
+            temperature: 0,
+            messages: vec!["Hello".to_string(), "World".to_string()],
+        },
     )?;
 
     service.start()?;

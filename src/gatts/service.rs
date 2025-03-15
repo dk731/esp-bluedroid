@@ -58,7 +58,7 @@ impl<'d> Service<'d> {
         let service = Self(Arc::new(service));
 
         service.register_bluedroid()?;
-        service.configure_read_write_events()?;
+        service.configure_read_events()?;
         service.register_in_parent()?;
 
         Ok(service)
@@ -96,12 +96,12 @@ impl<'d> Service<'d> {
         );
 
         let service = Arc::downgrade(&self.0);
-        std::thread::spawn(move || {
-            let Some(service) = service.upgrade() else {
-                log::error!("Failed to upgrade service in read events thread");
-                return;
-            };
-        });
+        // std::thread::spawn(move || {
+        //     let Some(service) = service.upgrade() else {
+        //         log::error!("Failed to upgrade service in read events thread");
+        //         return;
+        //     };
+        // });
 
         Ok(())
     }
@@ -236,7 +236,7 @@ impl<'d> Service<'d> {
         value: T,
     ) -> anyhow::Result<Characteristic<'d, T>>
     where
-        T: Serialize + for<'de> Deserialize<'de> + Clone,
+        T: Serialize + for<'de> Deserialize<'de> + Send + Clone,
     {
         Characteristic::new(self.0.clone(), config, value)
     }

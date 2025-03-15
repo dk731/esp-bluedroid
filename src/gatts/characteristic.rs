@@ -80,13 +80,13 @@ pub trait AnyCharacteristic<'d> {
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de> + Clone + 'static>(
+pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static>(
     pub Arc<CharacteristicInner<'d, T>>,
 );
 
 impl<'d, T> AnyCharacteristic<'d> for CharacteristicInner<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
 {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
         bincode::serde::encode_to_vec(
@@ -126,7 +126,7 @@ where
 
 pub struct CharacteristicInner<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
 {
     pub service: Weak<ServiceInner<'d>>,
     value: RwLock<T>,
@@ -137,7 +137,7 @@ where
 
 impl<'d, T> Characteristic<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
 {
     pub fn new(
         service: Arc<ServiceInner<'d>>,
