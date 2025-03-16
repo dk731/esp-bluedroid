@@ -75,7 +75,7 @@ impl<'d> Gap<'d> {
 
         self.gap.start_advertising()?;
 
-        let recv_result = match rx.recv_timeout(Duration::from_secs(5)) {
+        match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(status) => match status {
                 GapEvent::AdvertisingStarted(bt_status) => match bt_status {
                     BtStatus::Success => Ok(()),
@@ -89,13 +89,6 @@ impl<'d> Gap<'d> {
             Err(_) => Err(anyhow::anyhow!(
                 "Timeout waiting for advertising started event"
             )),
-        };
-
-        self.gap_events
-            .write()
-            .map_err(|err| anyhow::anyhow!("Failed to write gap_events: {:?}", err))?
-            .remove(&discriminant(&GapEvent::AdvertisingStarted(BtStatus::Done)));
-
-        recv_result
+        }
     }
 }

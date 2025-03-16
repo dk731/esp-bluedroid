@@ -61,62 +61,38 @@ impl<'d> App<'d> {
 
         gatts.gatts.register_app(self.0.id)?;
 
-        let callback_result = loop {
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(GattsEventMessage(
-                    interface,
-                    GattsEvent::ServiceRegistered { status, app_id },
-                )) => {
-                    if app_id == self.0.id {
-                        if status != GattStatus::Ok {
-                            break Err(anyhow::anyhow!(
-                                "Failed to register GATT application: {:?}",
-                                status
-                            ));
-                        }
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(GattsEventMessage(interface, GattsEvent::ServiceRegistered { status, app_id })) => {
+                if app_id != self.0.id {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT application ID: {:?}",
+                        app_id
+                    ));
+                }
+                if status != GattStatus::Ok {
+                    return Err(anyhow::anyhow!(
+                        "Failed to register GATT application: {:?}",
+                        status
+                    ));
+                }
 
-                        match self.0.gatt_interface.write().map_err(|_| {
-                            anyhow::anyhow!("Failed to write Gatt interface after registration")
-                        }) {
-                            Ok(mut gatt_interface) => {
-                                if gatt_interface.is_some() {
-                                    break Err(anyhow::anyhow!(
-                                        "Gatt interface is already set, likely App was not initialized properly"
-                                    ));
-                                }
-                                *gatt_interface = Some(interface);
-                                break Ok(());
-                            }
-                            Err(_) => {
-                                break Err(anyhow::anyhow!(
-                                    "Failed to write Gatt interface after registration"
-                                ));
-                            }
-                        };
-                    }
-                }
-                Ok(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event"
-                    ));
-                }
-                Err(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Timed out waiting for GATT application registration event"
-                    ));
-                }
+                self.0
+                    .gatt_interface
+                    .write()
+                    .map_err(|_| {
+                        anyhow::anyhow!("Failed to write Gatt interface after registration")
+                    })?
+                    .replace(interface);
+
+                Ok(())
             }
-        };
-
-        gatts
-            .gatts_events
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
-            .remove(&callback_key);
-
-        callback_result?;
-
-        Ok(())
+            Ok(_) => Err(anyhow::anyhow!(
+                "Received unexpected GATT application registration event"
+            )),
+            Err(_) => Err(anyhow::anyhow!(
+                "Timed out waiting for GATT application registration event"
+            )),
+        }
     }
 
     fn register_in_parent(&self) -> anyhow::Result<()> {

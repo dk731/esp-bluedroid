@@ -219,73 +219,50 @@ where
             .gatts
             .add_characteristic(service_handle, &(&self.0.config).into(), &current_data)?;
 
-        let callback_result = loop {
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(GattsEventMessage(
-                    _,
-                    GattsEvent::CharacteristicAdded {
-                        status,
-                        attr_handle,
-                        service_handle,
-                        char_uuid,
-                    },
-                )) => {
-                    if char_uuid != self.0.config.uuid {
-                        continue;
-                    }
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(GattsEventMessage(
+                _,
+                GattsEvent::CharacteristicAdded {
+                    status,
+                    attr_handle,
+                    service_handle,
+                    char_uuid,
+                },
+            )) => {
+                if char_uuid != self.0.config.uuid {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT characteristic UUID: {:?}",
+                        char_uuid
+                    ));
+                }
 
-                    if service_handle != service_handle {
-                        continue;
-                    }
+                if service_handle != service_handle {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT service handle: {:?}",
+                        service_handle
+                    ));
+                }
 
-                    if status != GattStatus::Ok {
-                        break Err(anyhow::anyhow!(
-                            "Failed to register GATT application: {:?}",
-                            status
-                        ));
-                    }
+                if status != GattStatus::Ok {
+                    return Err(anyhow::anyhow!(
+                        "Failed to register GATT application: {:?}",
+                        status
+                    ));
+                }
 
-                    match self.0.handle.write().map_err(|_| {
+                self.0
+                    .handle
+                    .write()
+                    .map_err(|_| {
                         anyhow::anyhow!("Failed to write Gatt interface after registration")
-                    }) {
-                        Ok(mut handle) => {
-                            if handle.is_some() {
-                                break Err(anyhow::anyhow!(
-                                    "Gatt interface is already set, likely App was not initialized properly"
-                                ));
-                            }
-                            *handle = Some(attr_handle);
-                            break Ok(());
-                        }
-                        Err(_) => {
-                            break Err(anyhow::anyhow!(
-                                "Failed to write Gatt interface after registration"
-                            ));
-                        }
-                    };
-                }
-                Ok(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event"
-                    ));
-                }
-                Err(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Timed out waiting for GATT application registration event"
-                    ));
-                }
+                    })?
+                    .replace(attr_handle);
+
+                Ok(())
             }
-        };
-
-        gatts
-            .gatts_events
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
-            .remove(&callback_key);
-
-        callback_result?;
-
-        Ok(())
+            Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
+            Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT event")),
+        }
     }
 
     fn register_in_parent(&self) -> anyhow::Result<()> {
