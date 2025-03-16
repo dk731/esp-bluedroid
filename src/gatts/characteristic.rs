@@ -75,18 +75,19 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-pub trait AnyCharacteristic<'d> {
+pub trait AnyCharacteristic<'d>: Send + Sync {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-pub struct Characteristic<'d, T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static>(
-    pub Arc<CharacteristicInner<'d, T>>,
-);
+pub struct Characteristic<
+    'd,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
+>(pub Arc<CharacteristicInner<'d, T>>);
 
 impl<'d, T> AnyCharacteristic<'d> for CharacteristicInner<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
         bincode::serde::encode_to_vec(
@@ -126,7 +127,7 @@ where
 
 pub struct CharacteristicInner<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
     pub service: Weak<ServiceInner<'d>>,
     value: RwLock<T>,
@@ -137,7 +138,7 @@ where
 
 impl<'d, T> Characteristic<'d, T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
     pub fn new(
         service: Arc<ServiceInner<'d>>,
@@ -292,13 +293,22 @@ where
             .0
             .service
             .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+
+        let handle = self
+            .0
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read handle"))?
+            .ok_or(anyhow::anyhow!(
+                "Handle in None, likely Characteristic was not initialized properly"
+            ))?;
 
         if service
             .characteristics
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface after registration"))?
-            .insert(CharacteristicId(self.0.config.uuid.clone()), self.0.clone())
+            .insert(handle.clone(), self.0.clone())
             .is_some()
         {
             log::warn!(

@@ -7,14 +7,16 @@ use std::{
 
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
-    ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
+    ble::gatt::{GattId, GattResponse, GattServiceId, GattStatus, Handle},
     BdAddr, BtUuid,
 };
 use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{AnyCharacteristic, Characteristic, CharacteristicConfig, CharacteristicId},
+    characteristic::{
+        self, AnyCharacteristic, Characteristic, CharacteristicConfig, CharacteristicId,
+    },
     GattsEvent, GattsEventMessage,
 };
 
@@ -35,8 +37,7 @@ pub struct ServiceInner<'d> {
     pub id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics:
-        Arc<RwLock<HashMap<CharacteristicId, Arc<dyn AnyCharacteristic<'d> + 'd>>>>,
+    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyCharacteristic<'d> + 'd>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
@@ -62,6 +63,62 @@ impl<'d> Service<'d> {
         service.register_in_parent()?;
 
         Ok(service)
+    }
+
+    fn send_response(
+        event: GattsEventMessage,
+        service: &Arc<ServiceInner<'d>>,
+    ) -> anyhow::Result<()> {
+        // let Some(characteristic) = characteristics.get(&handle) else {
+        //     log::warn!("Received read request for unknown handle: {:?}", handle);
+        //     continue;
+        // };
+
+        // let Ok(characteristic_bytes) = characteristic.as_bytes() else {
+        //     log::error!("Failed to convert characteristic to bytes");
+        //     continue;
+        // };
+
+        // let Ok(app) = service
+        //     .app
+        //     .upgrade()
+        //     .ok_or(anyhow::anyhow!("Failed to upgrade App"))
+        // else {
+        //     log::error!("Failed to upgrade App");
+        //     continue;
+        // };
+
+        // let Ok(gatts) = app
+        //     .gatts
+        //     .upgrade()
+        //     .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
+        // else {
+        //     log::error!("Failed to upgrade Gatts");
+        //     continue;
+        // };
+
+        // let Ok(response) = GattResponse::new()
+        //     .attr_handle(handle)
+        //     .auth_req(0)
+        //     .offset(offset)
+        //     .value(&characteristic_bytes)
+        // else {
+        //     log::error!("Failed to create GattResponse");
+        //     continue;
+        // };
+
+        // if let Err(err) = gatts.gatts.send_response(
+        //     app.gatt_interface.read().unwrap().unwrap(),
+        //     conn_id,
+        //     trans_id,
+        //     GattStatus::Ok,
+        //     Some(&response),
+        // ) {
+        //     log::error!("Failed to send response: {:?}", err);
+        //     continue;
+        // }
+
+        Ok(())
     }
 
     fn configure_read_events(&self) -> anyhow::Result<()> {
@@ -95,13 +152,14 @@ impl<'d> Service<'d> {
             tx,
         );
 
-        let service = Arc::downgrade(&self.0);
-        // std::thread::spawn(move || {
-        //     let Some(service) = service.upgrade() else {
-        //         log::error!("Failed to upgrade service in read events thread");
-        //         return;
-        //     };
-        // });
+        let service = self.0.clone();
+        std::thread::spawn(move || {
+            for event in rx.iter() {
+                if let Err(err) = Self::send_response(event, &service) {
+                    log::error!("Failed to send response: {:?}", err);
+                }
+            }
+        });
 
         Ok(())
     }
@@ -146,68 +204,46 @@ impl<'d> Service<'d> {
 
         gatts.gatts.create_service(gatt_interface, &self.0.id, 10)?;
 
-        let callback_result = loop {
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(GattsEventMessage(
-                    _,
-                    GattsEvent::ServiceCreated {
-                        status,
-                        service_handle,
-                        service_id,
-                    },
-                )) => {
-                    if service_id != self.0.id {
-                        continue;
-                    }
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(GattsEventMessage(
+                _,
+                GattsEvent::ServiceCreated {
+                    status,
+                    service_handle,
+                    service_id,
+                },
+            )) => {
+                if service_id != self.0.id {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT application registration event: {:?}",
+                        service_id
+                    ));
+                }
 
-                    if status != GattStatus::Ok {
-                        break Err(anyhow::anyhow!(
-                            "Failed to register GATT application: {:?}",
-                            status
-                        ));
-                    }
+                if status != GattStatus::Ok {
+                    return Err(anyhow::anyhow!(
+                        "Failed to register GATT application: {:?}",
+                        status
+                    ));
+                }
 
-                    match self.0.handle.write().map_err(|_| {
+                self.0
+                    .handle
+                    .write()
+                    .map_err(|_| {
                         anyhow::anyhow!("Failed to write Gatt interface after registration")
-                    }) {
-                        Ok(mut handle) => {
-                            if handle.is_some() {
-                                break Err(anyhow::anyhow!(
-                                        "Service handle already set, likely Service was not initialized properly"
-                                    ));
-                            }
-                            *handle = Some(service_handle);
-                            break Ok(());
-                        }
-                        Err(_) => {
-                            break Err(anyhow::anyhow!(
-                                "Failed to write Gatt interface after registration"
-                            ));
-                        }
-                    };
-                }
-                Ok(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event"
-                    ));
-                }
-                Err(_) => {
-                    break Err(anyhow::anyhow!(
-                        "Timed out waiting for GATT application registration event"
-                    ));
-                }
+                    })?
+                    .replace(service_handle.clone());
+
+                Ok(())
             }
-        };
-
-        gatts
-            .gatts_events
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
-            .remove(&callback_key);
-
-        callback_result?;
-
-        Ok(())
+            Ok(_) => Err(anyhow::anyhow!(
+                "Received unexpected GATT application registration event"
+            )),
+            Err(_) => Err(anyhow::anyhow!(
+                "Timed out waiting for GATT application registration event"
+            )),
+        }
     }
 
     fn register_in_parent(&self) -> anyhow::Result<()> {
@@ -236,7 +272,7 @@ impl<'d> Service<'d> {
         value: T,
     ) -> anyhow::Result<Characteristic<'d, T>>
     where
-        T: Serialize + for<'de> Deserialize<'de> + Send + Clone,
+        T: Serialize + for<'de> Deserialize<'de> + Sync + Send + Clone,
     {
         Characteristic::new(self.0.clone(), config, value)
     }
@@ -275,42 +311,33 @@ impl<'d> Service<'d> {
 
         gatts.gatts.start_service(handle.clone())?;
 
-        let callback_result = loop {
-            match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                Ok(GattsEventMessage(
-                    _,
-                    GattsEvent::ServiceStarted {
-                        status,
-                        service_handle,
-                    },
-                )) => {
-                    if service_handle != handle {
-                        continue;
-                    }
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(GattsEventMessage(
+                _,
+                GattsEvent::ServiceStarted {
+                    status,
+                    service_handle,
+                },
+            )) => {
+                if service_handle != handle {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT application registration event: {:?}",
+                        service_handle
+                    ));
+                }
 
-                    if status != GattStatus::Ok {
-                        break Err(anyhow::anyhow!("Failed to start service: {:?}", status));
-                    }
-                    break Ok(());
+                if status != GattStatus::Ok {
+                    return Err(anyhow::anyhow!(
+                        "Failed to register GATT application: {:?}",
+                        status
+                    ));
                 }
-                Ok(_) => {
-                    break Err(anyhow::anyhow!("Received unexpected GATT"));
-                }
-                Err(_) => {
-                    break Err(anyhow::anyhow!("Timed out waiting for GATT"));
-                }
+
+                Ok(())
             }
-        };
-
-        gatts
-            .gatts_events
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
-            .remove(&callback_key);
-
-        callback_result?;
-
-        Ok(())
+            Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
+            Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
+        }
     }
 
     pub fn stop(&self) -> anyhow::Result<()> {
