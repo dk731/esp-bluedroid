@@ -14,14 +14,14 @@ use event::GapEvent;
 use crate::ble::ExtBtDriver;
 use esp_idf_svc as svc;
 
-pub struct Gap<'d> {
-    gap: EspBleGap<'d, svc::bt::Ble, ExtBtDriver<'d>>,
+pub struct Gap {
+    gap: EspBleGap<'static, svc::bt::Ble, ExtBtDriver>,
 
     gap_events: Arc<RwLock<HashMap<Discriminant<GapEvent>, crossbeam_channel::Sender<GapEvent>>>>,
 }
 
-impl<'d> Gap<'d> {
-    pub fn new(bt: ExtBtDriver<'d>) -> anyhow::Result<Self> {
+impl Gap {
+    pub fn new(bt: ExtBtDriver) -> anyhow::Result<Self> {
         let gap = EspBleGap::new(bt)?;
 
         let gap = Self {

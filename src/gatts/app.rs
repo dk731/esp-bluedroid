@@ -12,18 +12,18 @@ use super::{
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
-pub struct App<'d>(pub Arc<AppInner<'d>>);
+pub struct App(pub Arc<AppInner>);
 
-pub struct AppInner<'d> {
-    pub gatts: Weak<GattsInner<'d>>,
+pub struct AppInner {
+    pub gatts: Weak<GattsInner>,
     pub gatt_interface: RwLock<Option<GattInterface>>,
-    pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner<'d>>>>>,
+    pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
 
     pub id: AppId,
 }
 
-impl<'d> App<'d> {
-    pub fn new(gatts: Arc<GattsInner<'d>>, app_id: AppId) -> anyhow::Result<Self> {
+impl App {
+    pub fn new(gatts: Arc<GattsInner>, app_id: AppId) -> anyhow::Result<Self> {
         let gatts = Arc::downgrade(&gatts);
         let app = AppInner {
             gatts,
@@ -107,7 +107,7 @@ impl<'d> App<'d> {
         &self,
         service_id: GattServiceId,
         num_handles: u16,
-    ) -> anyhow::Result<Service<'d>> {
+    ) -> anyhow::Result<Service> {
         Service::new(self.0.clone(), service_id, num_handles)
     }
 }

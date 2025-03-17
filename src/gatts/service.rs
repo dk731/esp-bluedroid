@@ -7,20 +7,16 @@ use std::{
 
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
-    ble::gatt::{GattId, GattResponse, GattServiceId, GattStatus, Handle},
+    ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
     BdAddr, BtUuid,
 };
 use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{
-        self, AnyCharacteristic, Characteristic, CharacteristicConfig, CharacteristicId,
-    },
+    characteristic::{AnyCharacteristic, Characteristic, CharacteristicConfig},
     GattsEvent, GattsEventMessage,
 };
-
-pub struct Service<'d>(pub Arc<ServiceInner<'d>>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceId(GattServiceId);
@@ -32,18 +28,20 @@ impl std::hash::Hash for ServiceId {
     }
 }
 
-pub struct ServiceInner<'d> {
-    pub app: Weak<AppInner<'d>>,
+pub struct Service(pub Arc<ServiceInner>);
+
+pub struct ServiceInner {
+    pub app: Weak<AppInner>,
     pub id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyCharacteristic<'d> + 'd>>>>,
+    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyCharacteristic>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
-impl<'d> Service<'d> {
+impl Service {
     pub fn new(
-        app: Arc<AppInner<'d>>,
+        app: Arc<AppInner>,
         service_id: GattServiceId,
         num_handles: u16,
     ) -> anyhow::Result<Self> {
@@ -59,132 +57,9 @@ impl<'d> Service<'d> {
         let service = Self(Arc::new(service));
 
         service.register_bluedroid()?;
-        service.configure_read_events()?;
         service.register_in_parent()?;
 
         Ok(service)
-    }
-
-    fn configure_read_events(&self) -> anyhow::Result<()> {
-        let app = self
-            .0
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-
-        let gatt = app
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-
-        let mut gatts_events = gatt
-            .gatts_events
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?;
-
-        let (tx, rx) = bounded(1);
-        gatts_events.insert(
-            discriminant(&GattsEvent::Read {
-                conn_id: 0,
-                trans_id: 0,
-                addr: BdAddr::from_bytes([0; 6]),
-                handle: 0,
-                offset: 0,
-                is_long: false,
-                need_rsp: true,
-            }),
-            tx,
-        );
-
-        let service = self.0.clone();
-        std::thread::spawn(move || {
-            for event in rx.iter() {
-                let send_response = || {
-                    let GattsEventMessage(
-                        _,
-                        GattsEvent::Read {
-                            conn_id,
-                            trans_id,
-                            addr,
-                            handle,
-                            offset,
-                            is_long,
-                            need_rsp,
-                        },
-                    ) = event
-                    else {
-                        return Err(anyhow::anyhow!(
-                            "Received unexpected GATT event: {:?}",
-                            event
-                        ));
-                    };
-
-                    // let characteristics = service
-                    //     .characteristics
-                    //     .read()
-                    //     .map_err(|_| anyhow::anyhow!("Failed to read characteristics"))?;
-
-                    // let Some(characteristic) = characteristics.get(&handle) else {
-                    //     log::warn!("Received read request for unknown handle: {:?}", handle);
-                    //     continue;
-                    // };
-
-                    // let Ok(characteristic_bytes) = characteristic.as_bytes() else {
-                    //     log::error!("Failed to convert characteristic to bytes");
-                    //     continue;
-                    // };
-
-                    // let Ok(app) = service
-                    //     .app
-                    //     .upgrade()
-                    //     .ok_or(anyhow::anyhow!("Failed to upgrade App"))
-                    // else {
-                    //     log::error!("Failed to upgrade App");
-                    //     continue;
-                    // };
-
-                    // let Ok(gatts) = app
-                    //     .gatts
-                    //     .upgrade()
-                    //     .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
-                    // else {
-                    //     log::error!("Failed to upgrade Gatts");
-                    //     continue;
-                    // };
-
-                    // let Ok(response) = GattResponse::new()
-                    //     .attr_handle(handle)
-                    //     .auth_req(0)
-                    //     .offset(offset)
-                    //     .value(&characteristic_bytes)
-                    // else {
-                    //     log::error!("Failed to create GattResponse");
-                    //     continue;
-                    // };
-
-                    // if let Err(err) = gatts.gatts.send_response(
-                    //     app.gatt_interface.read().unwrap().unwrap(),
-                    //     conn_id,
-                    //     trans_id,
-                    //     GattStatus::Ok,
-                    //     Some(&response),
-                    // ) {
-                    //     log::error!("Failed to send response: {:?}", err);
-                    //     continue;
-                    // }
-
-                    Ok(())
-                };
-
-                let a = send_response();
-
-                // if let Err(err) = qwe {
-                //     log::error!("Failed to handle GATT event: {:?}", err);
-                // }
-            }
-        });
-
-        Ok(())
     }
 
     fn register_bluedroid(&self) -> anyhow::Result<()> {
@@ -287,7 +162,7 @@ impl<'d> Service<'d> {
         &self,
         config: CharacteristicConfig,
         value: T,
-    ) -> anyhow::Result<Characteristic<'d, T>>
+    ) -> anyhow::Result<Characteristic<T>>
     where
         T: Serialize + for<'de> Deserialize<'de> + Sync + Send + Clone,
     {
@@ -412,5 +287,92 @@ impl<'d> Service<'d> {
             Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
             Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
         }
+    }
+}
+
+impl ServiceInner {
+    fn handle_read_event(&self, event: GattsEventMessage) -> anyhow::Result<()> {
+        // let GattsEventMessage(
+        //     _,
+        //     GattsEvent::Read {
+        //         conn_id,
+        //         trans_id,
+        //         addr,
+        //         handle,
+        //         offset,
+        //         is_long,
+        //         need_rsp,
+        //     },
+        // ) = event
+        // else {
+        //     return Err(anyhow::anyhow!(
+        //         "Received unexpected GATT event: {:?}",
+        //         event
+        //     ));
+        // };
+
+        // let characteristics = service
+        //     .characteristics
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristics"))?;
+
+        // let Some(characteristic) = characteristics.get(&handle) else {
+        //     log::warn!("Received read request for unknown handle: {:?}", handle);
+        //     continue;
+        // };
+
+        // let Ok(characteristic_bytes) = characteristic.as_bytes() else {
+        //     log::error!("Failed to convert characteristic to bytes");
+        //     continue;
+        // };
+
+        // let Ok(app) = service
+        //     .app
+        //     .upgrade()
+        //     .ok_or(anyhow::anyhow!("Failed to upgrade App"))
+        // else {
+        //     log::error!("Failed to upgrade App");
+        //     continue;
+        // };
+
+        // let Ok(gatts) = app
+        //     .gatts
+        //     .upgrade()
+        //     .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
+        // else {
+        //     log::error!("Failed to upgrade Gatts");
+        //     continue;
+        // };
+
+        // let Ok(response) = GattResponse::new()
+        //     .attr_handle(handle)
+        //     .auth_req(0)
+        //     .offset(offset)
+        //     .value(&characteristic_bytes)
+        // else {
+        //     log::error!("Failed to create GattResponse");
+        //     continue;
+        // };
+
+        // if let Err(err) = gatts.gatts.send_response(
+        //     app.gatt_interface.read().unwrap().unwrap(),
+        //     conn_id,
+        //     trans_id,
+        //     GattStatus::Ok,
+        //     Some(&response),
+        // ) {
+        //     log::error!("Failed to send response: {:?}", err);
+        //     continue;
+        // }
+
+        // Ok(())
+
+        // let a = send_response();
+
+        // if let Err(err) = qwe {
+        //     log::error!("Failed to handle GATT event: {:?}", err);
+        // }
+
+        Ok(())
     }
 }

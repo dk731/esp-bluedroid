@@ -75,17 +75,12 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-pub trait AnyCharacteristic<'d>: Send + Sync {
+pub trait AnyCharacteristic: Send + Sync {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-pub struct Characteristic<
-    'd,
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
->(pub Arc<CharacteristicInner<'d, T>>);
-
-impl<'d, T> AnyCharacteristic<'d> for CharacteristicInner<'d, T>
+impl<T> AnyCharacteristic for CharacteristicInner<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
@@ -125,23 +120,27 @@ where
     }
 }
 
-pub struct CharacteristicInner<'d, T>
+pub struct Characteristic<T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static>(
+    pub Arc<CharacteristicInner<T>>,
+);
+
+pub struct CharacteristicInner<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
-    pub service: Weak<ServiceInner<'d>>,
+    pub service: Weak<ServiceInner>,
     value: RwLock<T>,
 
     pub config: CharacteristicConfig,
     pub handle: RwLock<Option<Handle>>,
 }
 
-impl<'d, T> Characteristic<'d, T>
+impl<T> Characteristic<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
     pub fn new(
-        service: Arc<ServiceInner<'d>>,
+        service: Arc<ServiceInner>,
         config: CharacteristicConfig,
         value: T,
     ) -> anyhow::Result<Self> {
