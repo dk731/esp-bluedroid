@@ -331,4 +331,5 @@ impl<'d> From<gatt::server::GattsEvent<'d>> for GattsEvent {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct GattsEventMessage(pub GattInterface, pub GattsEvent);

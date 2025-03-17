@@ -1,4 +1,4 @@
-mod events;
+mod event;
 
 use std::{
     collections::HashMap,
@@ -9,7 +9,7 @@ use std::{
 
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{ble::gap::EspBleGap, BtStatus};
-use events::GapEvent;
+use event::GapEvent;
 
 use crate::ble::ExtBtDriver;
 use esp_idf_svc as svc;

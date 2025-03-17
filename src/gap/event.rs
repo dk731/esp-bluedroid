@@ -1,6 +1,6 @@
 use esp_idf_svc::bt::{ble::gap::BleGapEvent, BdAddr, BtStatus};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GapEvent {
     AdvertisingConfigured(BtStatus),
     ScanResponseConfigured(BtStatus),

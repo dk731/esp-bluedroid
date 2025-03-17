@@ -113,7 +113,10 @@ impl<'d> Service<'d> {
                         },
                     ) = event
                     else {
-                        return Err(anyhow::anyhow!("Received unexpected GATT event"));
+                        return Err(anyhow::anyhow!(
+                            "Received unexpected GATT event: {:?}",
+                            event
+                        ));
                     };
 
                     // let characteristics = service
