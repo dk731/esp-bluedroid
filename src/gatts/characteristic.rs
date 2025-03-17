@@ -184,7 +184,7 @@ where
         let service_handle = service
             .handle
             .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Service handle after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
             .ok_or(anyhow::anyhow!(
                 "Service handle is None, likely Service was not initialized properly"
             ))?;
@@ -201,17 +201,17 @@ where
         gatts
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key, tx);
 
+        let characteristic_value = self
+            .0
+            .value
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
+
         let current_data = bincode::serde::encode_to_vec(
-            self.0
-                .value
-                .read()
-                .map_err(|_| {
-                    anyhow::anyhow!("Failed to read characteristic value after registration")
-                })?
-                .clone(),
+            characteristic_value.clone(),
             bincode::config::standard(),
         )?;
 
@@ -245,7 +245,7 @@ where
 
                 if status != GattStatus::Ok {
                     return Err(anyhow::anyhow!(
-                        "Failed to register GATT application: {:?}",
+                        "Failed to add characteristic: {:?}",
                         status
                     ));
                 }
@@ -253,9 +253,7 @@ where
                 self.0
                     .handle
                     .write()
-                    .map_err(|_| {
-                        anyhow::anyhow!("Failed to write Gatt interface after registration")
-                    })?
+                    .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
                     .replace(attr_handle);
 
                 Ok(())
@@ -284,7 +282,7 @@ where
         if service
             .characteristics
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write service characteristics"))?
             .insert(handle.clone(), self.0.clone())
             .is_some()
         {
