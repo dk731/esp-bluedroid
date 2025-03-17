@@ -55,7 +55,7 @@ impl<'d> GattsInner<'d> {
             log::info!("Received event {:?}", e);
 
             let Some(callback_map) = callback_inner_ref.upgrade() else {
-                log::error!("Failed to upgrade Gatts reference");
+                log::error!("Failed to upgrade Gatts events map");
                 return;
             };
 
@@ -66,7 +66,7 @@ impl<'d> GattsInner<'d> {
 
             let event = GattsEvent::from(e);
             let Some(sender) = callback_map.get(&discriminant(&event)) else {
-                log::error!("No callback found for event {:?}", event);
+                log::warn!("No callback found for event {:?}", event);
                 return;
             };
 

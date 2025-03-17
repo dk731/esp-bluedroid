@@ -80,7 +80,7 @@ impl<'d> Service<'d> {
         let mut gatts_events = gatt
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?;
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?;
 
         let (tx, rx) = bounded(1);
         gatts_events.insert(
@@ -206,9 +206,9 @@ impl<'d> Service<'d> {
         let gatt_interface = app
             .gatt_interface
             .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
             .ok_or(anyhow::anyhow!(
-                "Gatt interface is None, likly App was not initialized properly"
+                "Gatt interface is None, likely App was not initialized properly"
             ))?;
 
         let gatts = app
@@ -219,7 +219,7 @@ impl<'d> Service<'d> {
         gatts
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key.clone(), tx.clone());
 
         gatts.gatts.create_service(gatt_interface, &self.0.id, 10)?;
@@ -235,14 +235,14 @@ impl<'d> Service<'d> {
             )) => {
                 if service_id != self.0.id {
                     return Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event: {:?}",
+                        "Received unexpected GATT service id: {:?}",
                         service_id
                     ));
                 }
 
                 if status != GattStatus::Ok {
                     return Err(anyhow::anyhow!(
-                        "Failed to register GATT application: {:?}",
+                        "Failed to create GATT service: {:?}",
                         status
                     ));
                 }
@@ -250,19 +250,13 @@ impl<'d> Service<'d> {
                 self.0
                     .handle
                     .write()
-                    .map_err(|_| {
-                        anyhow::anyhow!("Failed to write Gatt interface after registration")
-                    })?
+                    .map_err(|_| anyhow::anyhow!("Failed to write Service handle"))?
                     .replace(service_handle.clone());
 
                 Ok(())
             }
-            Ok(_) => Err(anyhow::anyhow!(
-                "Received unexpected GATT application registration event"
-            )),
-            Err(_) => Err(anyhow::anyhow!(
-                "Timed out waiting for GATT application registration event"
-            )),
+            Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT event")),
+            Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT event")),
         }
     }
 
@@ -276,7 +270,7 @@ impl<'d> Service<'d> {
         if app
             .services
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts services"))?
             .insert(ServiceId(self.0.id.clone()), self.0.clone())
             .is_some()
         {
@@ -320,13 +314,13 @@ impl<'d> Service<'d> {
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
             .ok_or(anyhow::anyhow!(
-                "Service handle is None, likly Service was not initialized properly"
+                "Service handle is None, likely Service was not initialized properly"
             ))?;
 
         gatts
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key, tx);
 
         gatts.gatts.start_service(handle.clone())?;
@@ -341,16 +335,13 @@ impl<'d> Service<'d> {
             )) => {
                 if service_handle != handle {
                     return Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event: {:?}",
+                        "Received unexpected GATT service handle: {:?}",
                         service_handle
                     ));
                 }
 
                 if status != GattStatus::Ok {
-                    return Err(anyhow::anyhow!(
-                        "Failed to register GATT application: {:?}",
-                        status
-                    ));
+                    return Err(anyhow::anyhow!("Failed to start service: {:?}", status));
                 }
 
                 Ok(())
@@ -389,7 +380,7 @@ impl<'d> Service<'d> {
         gatts
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events after registration"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key, tx);
 
         gatts.gatts.stop_service(handle.clone())?;
@@ -404,16 +395,13 @@ impl<'d> Service<'d> {
             )) => {
                 if service_handle != handle {
                     return Err(anyhow::anyhow!(
-                        "Received unexpected GATT application registration event: {:?}",
+                        "Received unexpected GATT service handle: {:?}",
                         service_handle
                     ));
                 }
 
                 if status != GattStatus::Ok {
-                    return Err(anyhow::anyhow!(
-                        "Failed to register GATT application: {:?}",
-                        status
-                    ));
+                    return Err(anyhow::anyhow!("Failed to stop service: {:?}", status));
                 }
 
                 Ok(())

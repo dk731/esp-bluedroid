@@ -64,34 +64,22 @@ impl<'d> App<'d> {
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(interface, GattsEvent::ServiceRegistered { status, app_id })) => {
                 if app_id != self.0.id {
-                    return Err(anyhow::anyhow!(
-                        "Received unexpected GATT application ID: {:?}",
-                        app_id
-                    ));
+                    return Err(anyhow::anyhow!("Received unexpected GATT: {:?}", app_id));
                 }
                 if status != GattStatus::Ok {
-                    return Err(anyhow::anyhow!(
-                        "Failed to register GATT application: {:?}",
-                        status
-                    ));
+                    return Err(anyhow::anyhow!("Failed to register: {:?}", status));
                 }
 
                 self.0
                     .gatt_interface
                     .write()
-                    .map_err(|_| {
-                        anyhow::anyhow!("Failed to write Gatt interface after registration")
-                    })?
+                    .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
                     .replace(interface);
 
                 Ok(())
             }
-            Ok(_) => Err(anyhow::anyhow!(
-                "Received unexpected GATT application registration event"
-            )),
-            Err(_) => Err(anyhow::anyhow!(
-                "Timed out waiting for GATT application registration event"
-            )),
+            Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT event")),
+            Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT event")),
         }
     }
 

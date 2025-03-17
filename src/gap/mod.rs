@@ -38,7 +38,7 @@ impl<'d> Gap<'d> {
         let callback_channels_map = Arc::downgrade(&self.gap_events);
         self.gap.subscribe(move |e| {
             let Some(callback_channels) = callback_channels_map.upgrade() else {
-                log::error!("Failed to upgrade weak reference to events map");
+                log::error!("Failed to upgrade Gap events map");
                 return;
             };
 
@@ -51,7 +51,7 @@ impl<'d> Gap<'d> {
 
             let event = GapEvent::from(e);
             let Some(callback_channel) = map_lock.get(&discriminant(&event)) else {
-                log::debug!("No callback channel found for event: {:?}", event);
+                log::warn!("No callback channel found for event: {:?}", event);
                 return;
             };
 
