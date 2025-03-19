@@ -11,10 +11,14 @@ use std::{
 };
 
 use app::{App, AppInner};
+use characteristic::AnyCharacteristic;
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
-    ble::gatt::server::{AppId, EspGatts},
-    BdAddr,
+    ble::gatt::{
+        server::{AppId, ConnectionId, EspGatts, TransferId},
+        GattInterface, GattResponse, GattStatus, Handle,
+    },
+    BdAddr, BtStatus,
 };
 use event::{GattsEvent, GattsEventMessage};
 
@@ -25,7 +29,7 @@ pub struct Gatts(pub Arc<GattsInner>);
 
 pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
-    apps: Arc<RwLock<HashMap<AppId, Arc<AppInner>>>>,
+    apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -45,6 +49,7 @@ impl Gatts {
 
         gatts.init_callback()?;
         gatts.configure_read_events()?;
+        gatts.configure_write_events()?;
 
         Ok(gatts)
     }
@@ -55,7 +60,7 @@ impl Gatts {
         self.0
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts events map"))?
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events map"))?
             .insert(
                 discriminant(&GattsEvent::Read {
                     conn_id: 0,
@@ -73,14 +78,51 @@ impl Gatts {
         std::thread::spawn(move || {
             for event in rx.iter() {
                 let Some(gatts) = gatts.upgrade() else {
-                    log::error!("Failed to upgrade Gatts instance");
+                    log::warn!("Failed to upgrade Gatts, exiting read events thread");
                     return;
                 };
 
-                // if let Err(err) = gatts.handle_read_event(event) {
-                //     log::error!("Failed to handle read event: {:?}", err);
-                //     return;
-                // }
+                if let Err(err) = gatts.handle_read_event(event) {
+                    log::error!("Failed to handle read event: {:?}", err);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    fn configure_write_events(&self) -> anyhow::Result<()> {
+        let (tx, rx) = bounded(1);
+
+        self.0
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events map"))?
+            .insert(
+                discriminant(&GattsEvent::Write {
+                    conn_id: 0,
+                    trans_id: 0,
+                    addr: BdAddr::from_bytes([0; 6]),
+                    handle: 0,
+                    offset: 0,
+                    need_rsp: false,
+                    is_prep: false,
+                    value: vec![],
+                }),
+                tx,
+            );
+
+        let gatts = Arc::downgrade(&self.0);
+        std::thread::spawn(move || {
+            for event in rx.iter() {
+                let Some(gatts) = gatts.upgrade() else {
+                    log::warn!("Failed to upgrade Gatts, exiting write events thread");
+                    return;
+                };
+
+                if let Err(err) = gatts.handle_write_event(event) {
+                    log::error!("Failed to handle write event: {:?}", err);
+                }
             }
         });
 
@@ -124,7 +166,118 @@ impl Gatts {
 }
 
 impl GattsInner {
+    fn send_response(
+        &self,
+        gatts_if: GattInterface,
+        conn_id: ConnectionId,
+        trans_id: TransferId,
+        status: GattStatus,
+        response: Option<&GattResponse>,
+    ) -> anyhow::Result<()> {
+        self.gatts
+            .send_response(gatts_if, conn_id, trans_id, status, response)?;
+
+        Ok(())
+    }
+
+    fn get_characteristic_lock(
+        &self,
+        interface: GattInterface,
+        handle: Handle,
+    ) -> anyhow::Result<Arc<dyn AnyCharacteristic>> {
+        let app = self
+            .apps
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts apps"))?
+            .get(&123)
+            .ok_or(anyhow::anyhow!(
+                "Not found app with given gatts interface: {:?}",
+                interface
+            ))?
+            .clone();
+
+        let services = &app
+            .services
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts services"))?;
+
+        let characteristic = {
+            let mut result = None;
+            for service in services.values() {
+                let characteristic = service
+                    .characteristics
+                    .read()
+                    .map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire read lock on Gatts characteristics")
+                    })?
+                    .get(&handle)
+                    .cloned();
+
+                if let Some(c) = characteristic {
+                    result = Some(c);
+                    break;
+                }
+            }
+            result
+        }
+        .ok_or(anyhow::anyhow!(
+            "Not found characteristic with given handle: {:?}",
+            handle
+        ))?;
+
+        Ok(characteristic)
+    }
+
     fn handle_read_event(&self, event: GattsEventMessage) -> anyhow::Result<()> {
+        let GattsEventMessage(
+            interface,
+            GattsEvent::Read {
+                conn_id,
+                trans_id,
+                handle,
+                offset,
+                need_rsp,
+                ..
+            },
+        ) = event
+        else {
+            return Err(anyhow::anyhow!("Invalid event type for read event"));
+        };
+
+        if !need_rsp {
+            log::warn!("Read request without response, ignoring");
+            return Ok(());
+        }
+
+        let response = (|| {
+            let characteristic = self.get_characteristic_lock(interface, handle)?;
+            let bytes = characteristic.as_bytes()?;
+            let mut response = GattResponse::new();
+            response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes)?;
+
+            Ok(response)
+        })()
+        .map_err(|err: anyhow::Error| {
+            match self.send_response(interface, conn_id, trans_id, GattStatus::Error, None) {
+                Ok(_) => anyhow::anyhow!("Failed to prepare characteristics bytes: {:?}", err),
+                Err(send_err) => {
+                    anyhow::anyhow!("Failed to prepare characteristics bytes ({:?}) and send error response ({:?})", err, send_err)
+                }
+            }
+        })?;
+
+        self.send_response(
+            interface,
+            conn_id,
+            trans_id,
+            GattStatus::Ok,
+            Some(&response),
+        )?;
+
+        Ok(())
+    }
+
+    fn handle_write_event(&self, event: GattsEventMessage) -> anyhow::Result<()> {
         //
 
         Ok(())

@@ -16,7 +16,7 @@ pub struct App(pub Arc<AppInner>);
 
 pub struct AppInner {
     pub gatts: Weak<GattsInner>,
-    pub gatt_interface: RwLock<Option<GattInterface>>,
+    pub interface: RwLock<Option<GattInterface>>,
     pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
 
     pub id: AppId,
@@ -29,7 +29,7 @@ impl App {
             gatts,
             id: app_id,
             services: Arc::new(RwLock::new(HashMap::new())),
-            gatt_interface: RwLock::new(None),
+            interface: RwLock::new(None),
         };
 
         let app = Self(Arc::new(app));
@@ -71,7 +71,7 @@ impl App {
                 }
 
                 self.0
-                    .gatt_interface
+                    .interface
                     .write()
                     .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
                     .replace(interface);
@@ -90,11 +90,19 @@ impl App {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
+        let gatts_interface = self
+            .0
+            .interface
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
+            .clone()
+            .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
+
         if gatts
             .apps
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?
-            .insert(self.0.id, self.0.clone())
+            .insert(gatts_interface, self.0.clone())
             .is_some()
         {
             log::warn!("App with ID {:?} already exists, replacing it", self.0.id);

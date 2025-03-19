@@ -82,7 +82,7 @@ impl Service {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
         let gatt_interface = app
-            .gatt_interface
+            .interface
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
             .ok_or(anyhow::anyhow!(
