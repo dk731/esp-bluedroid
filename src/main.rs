@@ -70,6 +70,19 @@ fn run_ble_example() -> anyhow::Result<()> {
         },
     )?;
 
+    let char2 = service.register_characteristic(
+        CharacteristicConfig {
+            uuid: BtUuid::uuid128(3),
+            value_max_len: 100,
+            readable: true,
+            writable: true,
+            broadcasted: true,
+            notifiable: true,
+            indicateable: true,
+        },
+        "Hello World".to_string(),
+    )?;
+
     service.start()?;
     ble.gap.start_advertising()?;
 

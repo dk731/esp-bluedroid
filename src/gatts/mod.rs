@@ -132,7 +132,7 @@ impl Gatts {
     fn init_callback(&self) -> anyhow::Result<()> {
         let callback_inner_ref = Arc::downgrade(&self.0.gatts_events);
         self.0.gatts.subscribe(move |(interface, e)| {
-            log::info!("Received event {:?}", e);
+            log::info!("Received event {:?}", (interface, &e));
 
             let Some(callback_map) = callback_inner_ref.upgrade() else {
                 log::error!("Failed to upgrade Gatts events map");
@@ -189,9 +189,9 @@ impl GattsInner {
             .apps
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts apps"))?
-            .get(&123)
+            .get(&interface)
             .ok_or(anyhow::anyhow!(
-                "Not found app with given gatts interface: {:?}",
+                "No found app with given gatts interface: {:?}",
                 interface
             ))?
             .clone();
