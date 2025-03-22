@@ -80,7 +80,9 @@ fn run_ble_example() -> anyhow::Result<()> {
             notifiable: true,
             indicateable: true,
         },
-        "Hello World".to_string(),
+        vec![
+            0x0000, 0xffff, 0x0002, 0xffff, 0x0004, 0xffff, 0x0006, 0xffff,
+        ],
     )?;
 
     service.start()?;
