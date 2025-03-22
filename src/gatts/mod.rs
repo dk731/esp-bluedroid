@@ -75,18 +75,24 @@ impl Gatts {
             );
 
         let gatts = Arc::downgrade(&self.0);
-        std::thread::spawn(move || {
-            for event in rx.iter() {
-                let Some(gatts) = gatts.upgrade() else {
-                    log::warn!("Failed to upgrade Gatts, exiting read events thread");
-                    return;
-                };
+        std::thread::Builder::new()
+            .stack_size(8 * 1024)
+            .spawn(move || {
+                for event in rx.iter() {
+                    log::info!("Received read event: {:?}", event);
 
-                if let Err(err) = gatts.handle_read_event(event) {
-                    log::error!("Failed to handle read event: {:?}", err);
+                    let Some(gatts) = gatts.upgrade() else {
+                        log::warn!("Failed to upgrade Gatts, exiting read events thread");
+                        return;
+                    };
+
+                    log::info!("Upgraded Gatts successfully");
+
+                    if let Err(err) = gatts.handle_read_event(event) {
+                        log::error!("Failed to handle read event: {:?}", err);
+                    }
                 }
-            }
-        });
+            })?;
 
         Ok(())
     }
@@ -113,18 +119,20 @@ impl Gatts {
             );
 
         let gatts = Arc::downgrade(&self.0);
-        std::thread::spawn(move || {
-            for event in rx.iter() {
-                let Some(gatts) = gatts.upgrade() else {
-                    log::warn!("Failed to upgrade Gatts, exiting write events thread");
-                    return;
-                };
+        std::thread::Builder::new()
+            .stack_size(8 * 1024)
+            .spawn(move || {
+                for event in rx.iter() {
+                    let Some(gatts) = gatts.upgrade() else {
+                        log::warn!("Failed to upgrade Gatts, exiting write events thread");
+                        return;
+                    };
 
-                if let Err(err) = gatts.handle_write_event(event) {
-                    log::error!("Failed to handle write event: {:?}", err);
+                    if let Err(err) = gatts.handle_write_event(event) {
+                        log::error!("Failed to handle write event: {:?}", err);
+                    }
                 }
-            }
-        });
+            })?;
 
         Ok(())
     }
@@ -229,6 +237,7 @@ impl GattsInner {
     }
 
     fn handle_read_event(&self, event: GattsEventMessage) -> anyhow::Result<()> {
+        log::info!("Handling read event: {:?}", event);
         let GattsEventMessage(
             interface,
             GattsEvent::Read {
@@ -250,10 +259,17 @@ impl GattsInner {
         }
 
         let response = (|| {
+            log::info!("Preparing response for read event");
+
             let characteristic = self.get_characteristic_lock(interface, handle)?;
+            log::info!("got characteristic lock");
+
             let bytes = characteristic.as_bytes()?;
+            log::info!("got bytes from characteristic");
+
             let mut response = GattResponse::new();
             response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes)?;
+            log::info!("prepared response");
 
             Ok(response)
         })()
@@ -266,6 +282,7 @@ impl GattsInner {
             }
         })?;
 
+        log::info!("sending response");
         self.send_response(
             interface,
             conn_id,
