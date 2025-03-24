@@ -172,16 +172,45 @@ impl Gatts {
 impl GattsInner {
     fn send_response(
         &self,
+        characteristic_handle: Handle,
         gatts_if: GattInterface,
         conn_id: ConnectionId,
         trans_id: TransferId,
         status: GattStatus,
         response: Option<&GattResponse>,
     ) -> anyhow::Result<()> {
+        let (tx, rx) = bounded(1);
+        let callback_key = discriminant(&GattsEvent::ResponseComplete {
+            status: GattStatus::Busy,
+            handle: 0,
+        });
+
+        self.gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
+            .insert(callback_key.clone(), tx.clone());
+
         self.gatts
             .send_response(gatts_if, conn_id, trans_id, status, response)?;
 
-        Ok(())
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(GattsEventMessage(_, GattsEvent::ResponseComplete { status, handle })) => {
+                if characteristic_handle != handle {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT characteristic handle: {:?}",
+                        characteristic_handle
+                    ));
+                }
+
+                if status != GattStatus::Ok {
+                    return Err(anyhow::anyhow!("Failed to stop service: {:?}", status));
+                }
+
+                Ok(())
+            }
+            Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
+            Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
+        }
     }
 
     fn get_characteristic_lock(
@@ -263,7 +292,7 @@ impl GattsInner {
             Ok(response)
         })()
         .map_err(|err: anyhow::Error| {
-            match self.send_response(interface, conn_id, trans_id, GattStatus::Error, None) {
+            match self.send_response(handle,interface, conn_id, trans_id, GattStatus::Error, None) {
                 Ok(_) => anyhow::anyhow!("Failed to prepare characteristics bytes: {:?}", err),
                 Err(send_err) => {
                     anyhow::anyhow!("Failed to prepare characteristics bytes ({:?}) and send error response ({:?})", err, send_err)
@@ -272,6 +301,7 @@ impl GattsInner {
         })?;
 
         self.send_response(
+            handle,
             interface,
             conn_id,
             trans_id,
