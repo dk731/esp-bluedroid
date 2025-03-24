@@ -25,12 +25,17 @@ use event::{GattsEvent, GattsEventMessage};
 use crate::ble::ExtBtDriver;
 use esp_idf_svc as svc;
 
+struct PrepareWriteBuffer {
+    value: Vec<u8>,
+    characteristic_handle: Handle,
+}
+
 pub struct Gatts(pub Arc<GattsInner>);
 
 pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
-    temporary_write_buffer: Arc<RwLock<HashMap<TransferId, Vec<u8>>>>,
+    temporary_write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -78,7 +83,7 @@ impl Gatts {
 
         let gatts = Arc::downgrade(&self.0);
         std::thread::Builder::new()
-            .stack_size(4 * 1024)
+            .stack_size(8 * 1024)
             .spawn(move || {
                 for event in rx.iter() {
                     let Some(gatts) = gatts.upgrade() else {
@@ -129,7 +134,7 @@ impl Gatts {
 
         let gatts = Arc::downgrade(&self.0);
         std::thread::Builder::new()
-            .stack_size(4 * 1024)
+            .stack_size(8 * 1024)
             .spawn(move || {
                 for event in rx.iter() {
                     let Some(gatts) = gatts.upgrade() else {
@@ -335,17 +340,57 @@ impl GattsInner {
                     handle,
                     offset,
                     need_rsp,
-                    addr,
                     is_prep,
                     value,
+                    ..
                 },
             ) => {
+                let result: anyhow::Result<()> = (|| {
+                    let mut temp_storage = self.temporary_write_buffer.write().map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire write lock on temporary write buffer")
+                    })?;
+                    let temp_buffer = temp_storage.entry(trans_id).or_insert(PrepareWriteBuffer {
+                        value: Vec::new(),
+                        characteristic_handle: handle,
+                    });
+
+                    if temp_buffer.value.len() < offset as usize + value.len() {
+                        temp_buffer.value.resize(offset as usize + value.len(), 0);
+                    }
+                    temp_buffer.value[offset as usize..offset as usize + value.len()]
+                        .copy_from_slice(&value);
+
+                    if !is_prep {
+                        log::info!("Updating characteristic with handle: {:?}", handle);
+                        let characteristic = self.get_characteristic_lock(interface, handle)?;
+                        let bytes = characteristic.as_bytes()?;
+
+                        log::info!("Updating characteristic bytes: {:?}", bytes);
+                        characteristic.update_from_bytes(&bytes)?;
+                    }
+
+                    Ok(())
+                })();
+
                 if !need_rsp {
                     log::warn!("Write event without response, ignoring");
-                    return Ok(());
+                    return result;
                 }
 
-                Ok(())
+                self.send_response(
+                    handle,
+                    interface,
+                    conn_id,
+                    trans_id,
+                    if result.is_ok() {
+                        GattStatus::Ok
+                    } else {
+                        GattStatus::Error
+                    },
+                    None,
+                )?;
+
+                result
             }
             GattsEventMessage(
                 interface,
@@ -355,7 +400,47 @@ impl GattsInner {
                     addr,
                     canceled,
                 },
-            ) => Ok(()),
+            ) => {
+                let mut handle = None;
+                let result = (|| {
+                    let temp_storage = self.temporary_write_buffer.write().map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire write lock on temporary write buffer")
+                    })?;
+                    let temp_buffer = temp_storage.get(&trans_id).ok_or(anyhow::anyhow!(
+                        "Not found temporary write buffer with given transfer id: {:?}",
+                        trans_id
+                    ))?;
+                    handle.replace(temp_buffer.characteristic_handle);
+
+                    if !canceled {
+                        let characteristic = self.get_characteristic_lock(
+                            interface,
+                            temp_buffer.characteristic_handle,
+                        )?;
+                        let bytes = characteristic.as_bytes()?;
+                        characteristic.update_from_bytes(&bytes)?;
+                    }
+
+                    Ok(())
+                })();
+
+                if let Some(handle) = handle {
+                    self.send_response(
+                        handle,
+                        interface,
+                        conn_id,
+                        trans_id,
+                        if result.is_ok() {
+                            GattStatus::Ok
+                        } else {
+                            GattStatus::Error
+                        },
+                        None,
+                    )?;
+                }
+
+                result
+            }
             _ => Err(anyhow::anyhow!(
                 "Invalid event type for read event: {:?}",
                 event
