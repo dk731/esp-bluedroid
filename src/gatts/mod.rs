@@ -30,6 +30,7 @@ pub struct Gatts(pub Arc<GattsInner>);
 pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
+    temporary_write_buffer: Arc<RwLock<HashMap<TransferId, Vec<u8>>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -43,6 +44,7 @@ impl Gatts {
             gatts,
             apps: Arc::new(RwLock::new(HashMap::new())),
             gatts_events: Arc::new(RwLock::new(HashMap::new())),
+            temporary_write_buffer: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let gatts = Self(Arc::new(gatts_inner));
@@ -76,7 +78,7 @@ impl Gatts {
 
         let gatts = Arc::downgrade(&self.0);
         std::thread::Builder::new()
-            .stack_size(8 * 1024)
+            .stack_size(4 * 1024)
             .spawn(move || {
                 for event in rx.iter() {
                     let Some(gatts) = gatts.upgrade() else {
@@ -96,27 +98,38 @@ impl Gatts {
     fn configure_write_events(&self) -> anyhow::Result<()> {
         let (tx, rx) = bounded(1);
 
-        self.0
+        let mut gatt_events = self
+            .0
             .gatts_events
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events map"))?
-            .insert(
-                discriminant(&GattsEvent::Write {
-                    conn_id: 0,
-                    trans_id: 0,
-                    addr: BdAddr::from_bytes([0; 6]),
-                    handle: 0,
-                    offset: 0,
-                    need_rsp: false,
-                    is_prep: false,
-                    value: vec![],
-                }),
-                tx,
-            );
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events map"))?;
+
+        gatt_events.insert(
+            discriminant(&GattsEvent::Write {
+                conn_id: 0,
+                trans_id: 0,
+                addr: BdAddr::from_bytes([0; 6]),
+                handle: 0,
+                offset: 0,
+                need_rsp: false,
+                is_prep: false,
+                value: vec![],
+            }),
+            tx.clone(),
+        );
+        gatt_events.insert(
+            discriminant(&GattsEvent::ExecWrite {
+                conn_id: 0,
+                trans_id: 0,
+                addr: BdAddr::from_bytes([0; 6]),
+                canceled: false,
+            }),
+            tx,
+        );
 
         let gatts = Arc::downgrade(&self.0);
         std::thread::Builder::new()
-            .stack_size(8 * 1024)
+            .stack_size(4 * 1024)
             .spawn(move || {
                 for event in rx.iter() {
                     let Some(gatts) = gatts.upgrade() else {
@@ -278,7 +291,7 @@ impl GattsInner {
         };
 
         if !need_rsp {
-            log::warn!("Read request without response, ignoring");
+            log::warn!("Read event without response, ignoring");
             return Ok(());
         }
 
@@ -313,8 +326,40 @@ impl GattsInner {
     }
 
     fn handle_write_event(&self, event: GattsEventMessage) -> anyhow::Result<()> {
-        //
+        match event {
+            GattsEventMessage(
+                interface,
+                GattsEvent::Write {
+                    conn_id,
+                    trans_id,
+                    handle,
+                    offset,
+                    need_rsp,
+                    addr,
+                    is_prep,
+                    value,
+                },
+            ) => {
+                if !need_rsp {
+                    log::warn!("Write event without response, ignoring");
+                    return Ok(());
+                }
 
-        Ok(())
+                Ok(())
+            }
+            GattsEventMessage(
+                interface,
+                GattsEvent::ExecWrite {
+                    conn_id,
+                    trans_id,
+                    addr,
+                    canceled,
+                },
+            ) => Ok(()),
+            _ => Err(anyhow::anyhow!(
+                "Invalid event type for read event: {:?}",
+                event
+            )),
+        }
     }
 }
