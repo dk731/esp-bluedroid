@@ -5,9 +5,13 @@ use std::{
 };
 
 use crossbeam_channel::bounded;
-use esp_idf_svc::bt::ble::gatt::{server::AppId, GattInterface, GattServiceId, GattStatus};
+use esp_idf_svc::bt::ble::gatt::{
+    server::{AppId, ConnectionId},
+    GattInterface, GattServiceId, GattStatus,
+};
 
 use super::{
+    connection::ConnectionInner,
     service::{Service, ServiceId, ServiceInner},
     GattsEvent, GattsEventMessage, GattsInner,
 };
@@ -18,6 +22,7 @@ pub struct AppInner {
     pub gatts: Weak<GattsInner>,
     pub interface: RwLock<Option<GattInterface>>,
     pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
+    pub connections: Arc<RwLock<HashMap<ConnectionId, Weak<ConnectionInner>>>>,
 
     pub id: AppId,
 }
@@ -30,6 +35,7 @@ impl App {
             id: app_id,
             services: Arc::new(RwLock::new(HashMap::new())),
             interface: RwLock::new(None),
+            connections: Arc::new(RwLock::new(HashMap::new())),
         };
 
         let app = Self(Arc::new(app));

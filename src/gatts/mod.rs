@@ -1,9 +1,9 @@
 pub mod app;
 pub mod characteristic;
+pub mod connection;
 pub mod descriptor;
 pub mod event;
 pub mod service;
-pub mod 
 
 use std::{
     collections::HashMap,

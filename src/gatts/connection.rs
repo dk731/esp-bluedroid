@@ -1,10 +1,10 @@
-pub struct Service(pub Arc<ServiceInner>);
+use std::{rc::Weak, sync::Arc};
 
-pub struct ServiceInner {
-    pub app: Weak<AppInner>,
-    pub id: GattServiceId,
-    pub num_handles: u16,
+use esp_idf_svc::bt::ble::gatt::server::ConnectionId;
 
-    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyCharacteristic>>>>,
-    pub handle: RwLock<Option<Handle>>,
+pub struct Connection(pub Arc<ConnectionInner>);
+
+pub struct ConnectionInner {
+    id: ConnectionId,
+    link_role: LinkR,
 }

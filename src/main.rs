@@ -85,7 +85,33 @@ fn run_ble_example() -> anyhow::Result<()> {
             .collect::<Vec<u8>>(),
     )?;
 
+    let app2 = ble.gatts.register_app(777)?;
+    let service2 = app2.register_service(
+        GattServiceId {
+            id: GattId {
+                uuid: BtUuid::uuid128(4),
+                inst_id: 0,
+            },
+            is_primary: true,
+        },
+        10,
+    )?;
+    let char3 = service2.register_characteristic(
+        CharacteristicConfig {
+            uuid: BtUuid::uuid128(5),
+            value_max_len: 100,
+            readable: true,
+            writable: true,
+            broadcasted: true,
+            notifiable: true,
+            indicateable: true,
+        },
+        "Hello World".to_string(),
+    )?;
+
     service.start()?;
+    service2.start()?;
+
     ble.gap.start_advertising()?;
 
     loop {
