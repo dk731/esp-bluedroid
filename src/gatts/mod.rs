@@ -3,6 +3,7 @@ pub mod characteristic;
 pub mod descriptor;
 pub mod event;
 pub mod service;
+pub mod 
 
 use std::{
     collections::HashMap,
@@ -392,7 +393,6 @@ impl GattsInner {
                     } else {
                         GattStatus::Error
                     },
-                    // GattStatus::Error,
                     Some(
                         GattResponse::new()
                             .attr_handle(handle)

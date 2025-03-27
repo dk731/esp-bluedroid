@@ -73,14 +73,16 @@ fn run_ble_example() -> anyhow::Result<()> {
     let char2 = service.register_characteristic(
         CharacteristicConfig {
             uuid: BtUuid::uuid128(3),
-            value_max_len: 100,
+            value_max_len: 4096,
             readable: true,
             writable: true,
             broadcasted: true,
             notifiable: true,
             indicateable: true,
         },
-        vec![0u8, 0, 0, 0],
+        (0..2048)
+            .map(|i| if i % 2 == 0 { 0x00 } else { 0xff })
+            .collect::<Vec<u8>>(),
     )?;
 
     service.start()?;
