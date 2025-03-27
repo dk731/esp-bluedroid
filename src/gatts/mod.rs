@@ -307,6 +307,12 @@ impl GattsInner {
             let mut response = GattResponse::new();
             response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes)?;
 
+            log::info!(
+                "Sending read response with handle: {:?}, bytes: {:?}",
+                handle,
+                bytes
+            );
+
             Ok(response)
         })()
         .map_err(|err: anyhow::Error| {
@@ -363,10 +369,9 @@ impl GattsInner {
                     if !is_prep {
                         log::info!("Updating characteristic with handle: {:?}", handle);
                         let characteristic = self.get_characteristic_lock(interface, handle)?;
-                        let bytes = characteristic.as_bytes()?;
 
-                        log::info!("Updating characteristic bytes: {:?}", bytes);
-                        characteristic.update_from_bytes(&bytes)?;
+                        log::info!("Updating characteristic bytes: {:?}", temp_buffer.value);
+                        characteristic.update_from_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())
@@ -387,7 +392,14 @@ impl GattsInner {
                     } else {
                         GattStatus::Error
                     },
-                    None,
+                    // GattStatus::Error,
+                    Some(
+                        GattResponse::new()
+                            .attr_handle(handle)
+                            .auth_req(0)
+                            .offset(offset)
+                            .value(&value)?,
+                    ),
                 )?;
 
                 result
@@ -397,8 +409,8 @@ impl GattsInner {
                 GattsEvent::ExecWrite {
                     conn_id,
                     trans_id,
-                    addr,
                     canceled,
+                    ..
                 },
             ) => {
                 let mut handle = None;
@@ -417,8 +429,8 @@ impl GattsInner {
                             interface,
                             temp_buffer.characteristic_handle,
                         )?;
-                        let bytes = characteristic.as_bytes()?;
-                        characteristic.update_from_bytes(&bytes)?;
+
+                        characteristic.update_from_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())
