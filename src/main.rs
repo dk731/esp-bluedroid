@@ -1,4 +1,3 @@
-use bincode::{Decode, Encode};
 use esp_bluedroid::{ble, gatts::characteristic::CharacteristicConfig};
 use esp_idf_svc::{
     bt::{

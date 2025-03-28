@@ -6,5 +6,5 @@ pub struct Connection(pub Arc<ConnectionInner>);
 
 pub struct ConnectionInner {
     id: ConnectionId,
-    link_role: LinkR,
+    // link_role: LinkR,
 }
