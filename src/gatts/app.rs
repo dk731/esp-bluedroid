@@ -22,7 +22,7 @@ pub struct AppInner {
     pub gatts: Weak<GattsInner>,
     pub interface: RwLock<Option<GattInterface>>,
     pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
-    pub connections: Arc<RwLock<HashMap<ConnectionId, Weak<ConnectionInner>>>>,
+    pub connections: Arc<RwLock<HashMap<ConnectionId, ConnectionInner>>>,
 
     pub id: AppId,
 }

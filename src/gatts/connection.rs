@@ -1,10 +1,8 @@
-use std::{rc::Weak, sync::Arc};
-
-use esp_idf_svc::bt::ble::gatt::server::ConnectionId;
-
-pub struct Connection(pub Arc<ConnectionInner>);
+use esp_idf_svc::bt::ble::gatt::{server::ConnectionId, GattConnParams};
 
 pub struct ConnectionInner {
-    id: ConnectionId,
-    // link_role: LinkR,
+    pub id: ConnectionId,
+    pub link_role: u8,
+    pub mtu: u16,
+    pub conn_params: GattConnParams,
 }

@@ -17,7 +17,7 @@ use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
     ble::gatt::{
         server::{AppId, ConnectionId, EspGatts, TransferId},
-        GattInterface, GattResponse, GattStatus, Handle,
+        GattConnParams, GattConnReason, GattInterface, GattResponse, GattStatus, Handle,
     },
     BdAddr,
 };
@@ -104,10 +104,31 @@ impl Gatts {
             }),
             tx.clone(),
         );
-        // gatt_events.insert(
-        //     discriminant(&GattsEvent::PeerConnected { conn_id: 0, link_role: 0, addr:BdAddr::from_bytes([0; 6]), conn_params: GattConnParams{ interval_ms: 0, latency_ms: 0, timeout_ms: 0 } } ),
-        //     tx.clone(),
-        // );
+        gatt_events.insert(
+            discriminant(&GattsEvent::PeerConnected {
+                conn_id: 0,
+                link_role: 0,
+                addr: BdAddr::from_bytes([0; 6]),
+                conn_params: GattConnParams {
+                    interval_ms: 0,
+                    latency_ms: 0,
+                    timeout_ms: 0,
+                },
+            }),
+            tx.clone(),
+        );
+        gatt_events.insert(
+            discriminant(&GattsEvent::PeerDisconnected {
+                conn_id: 0,
+                addr: BdAddr::from_bytes([0; 6]),
+                reason: GattConnReason::Unknown,
+            }),
+            tx.clone(),
+        );
+        gatt_events.insert(
+            discriminant(&GattsEvent::Mtu { conn_id: 0, mtu: 0 }),
+            tx.clone(),
+        );
 
         let gatts = Arc::downgrade(&self.0);
         std::thread::Builder::new()
@@ -422,6 +443,32 @@ impl GattsInner {
                 }
 
                 result
+            }
+            GattsEventMessage(interface, GattsEvent::Mtu { conn_id, mtu }) => {
+                let app = self
+                    .apps
+                    .read()
+                    .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts apps"))?
+                    .get(&interface)
+                    .ok_or(anyhow::anyhow!(
+                        "No found app with given gatts interface: {:?}",
+                        interface
+                    ))?
+                    .clone();
+
+                app.connections
+                    .write()
+                    .map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire write lock on Gatts connections")
+                    })?
+                    .get_mut(&conn_id)
+                    .ok_or(anyhow::anyhow!(
+                        "No found connection with given connection id: {:?}",
+                        conn_id
+                    ))?
+                    .mtu = mtu;
+
+                Ok(())
             }
             _ => Err(anyhow::anyhow!("Unexpected GATT event: {:?}", event)),
         }
