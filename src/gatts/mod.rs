@@ -444,6 +444,69 @@ impl GattsInner {
 
                 result
             }
+            GattsEventMessage(
+                interface,
+                GattsEvent::PeerConnected {
+                    conn_id,
+                    link_role,
+                    addr,
+                    conn_params,
+                },
+            ) => {
+                let app = self
+                    .apps
+                    .read()
+                    .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts apps"))?
+                    .get(&interface)
+                    .ok_or(anyhow::anyhow!(
+                        "No found app with given gatts interface: {:?}",
+                        interface
+                    ))?
+                    .clone();
+
+                app.connections
+                    .write()
+                    .map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire write lock on Gatts connections")
+                    })?
+                    .insert(
+                        conn_id,
+                        connection::ConnectionInner {
+                            id: conn_id,
+                            link_role,
+                            mtu: None,
+                            conn_params,
+                            address: addr,
+                        },
+                    );
+
+                Ok(())
+            }
+            GattsEventMessage(interface, GattsEvent::PeerDisconnected { conn_id, .. }) => {
+                let app = self
+                    .apps
+                    .read()
+                    .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts apps"))?
+                    .get(&interface)
+                    .ok_or(anyhow::anyhow!(
+                        "No found app with given gatts interface: {:?}",
+                        interface
+                    ))?
+                    .clone();
+
+                app.connections
+                    .write()
+                    .map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire write lock on Gatts connections")
+                    })?
+                    .remove(&conn_id)
+                    .ok_or(anyhow::anyhow!(
+                        "No found connection with given connection id: {:?}",
+                        conn_id
+                    ))?;
+
+                Ok(())
+            }
             GattsEventMessage(interface, GattsEvent::Mtu { conn_id, mtu }) => {
                 let app = self
                     .apps
@@ -466,7 +529,8 @@ impl GattsInner {
                         "No found connection with given connection id: {:?}",
                         conn_id
                     ))?
-                    .mtu = mtu;
+                    .mtu
+                    .replace(mtu);
 
                 Ok(())
             }
