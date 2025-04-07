@@ -10,6 +10,42 @@
       "MIMode": "gdb",
       "miDebuggerPath": "${userHome}/.espressif/tools/xtensa-esp32s3-elf/esp-2021r2-patch3-8.4.0/xtensa-esp32s3-elf/bin/xtensa-esp32s3-elf-gdb",
       "miDebuggerServerAddress": "localhost:3333"
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "launch",
+      "name": "Launch",
+      "cwd": "${workspaceFolder}",
+      "chip": "esp32s3",
+      "speed": 100,
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "haltAfterReset": true,
+        "formatOptions": {
+          "binaryFormat": "idf"
+        }
+      },
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "target/xtensa-esp32s3-espidf/debug/${workspaceFolderBasename}",
+          "svdFile": "${workspaceFolder}/.data/esp32s3.svd"
+        }
+      ]
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "attach",
+      "name": "Attach",
+      "cwd": "${workspaceFolder}",
+      "chip": "esp32s3",
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "target/xtensa-esp32s3-espidf/debug/${workspaceFolderBasename}",
+          "svdFile": "${workspaceFolder}/.data/esp32s3.svd"
+        }
+      ]
     }
   ]
 }
