@@ -14,12 +14,15 @@ use std::{
 use app::{App, AppInner};
 use characteristic::AnyCharacteristic;
 use crossbeam_channel::bounded;
-use esp_idf_svc::bt::{
-    ble::gatt::{
-        server::{AppId, ConnectionId, EspGatts, TransferId},
-        GattConnParams, GattConnReason, GattInterface, GattResponse, GattStatus, Handle,
+use esp_idf_svc::{
+    bt::{
+        ble::gatt::{
+            server::{AppId, ConnectionId, EspGatts, TransferId},
+            GattConnParams, GattConnReason, GattInterface, GattResponse, GattStatus, Handle,
+        },
+        BdAddr,
     },
-    BdAddr,
+    sys::{esp_gatt_rsp_t, ESP_GATT_MAX_ATTR_LEN},
 };
 use event::{GattsEvent, GattsEventMessage};
 
@@ -299,16 +302,35 @@ impl GattsInner {
                     let characteristic = self.get_characteristic_lock(interface, handle)?;
                     let bytes = characteristic.as_bytes()?;
 
-                      let mut response = GattResponse::new();
-                    response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes)?;
+                    let app = self.apps.read().map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire read lock on Gatts connections")
+                    })?.get(&interface).ok_or(anyhow::anyhow!(
+                        "No found app with given gatts interface: {:?}",
+                        interface
+                    ))?.clone();
 
-                    log::info!(
-                        "Sending read response with handle: {:?}, bytes: {:?}",
-                        handle,
-                        bytes
-                    );
+                    let connections = app.connections.read().map_err(|_| {
+                        anyhow::anyhow!("Failed to acquire read lock on Gatts connections")
+                    })?;
+                    let connection = connections.get(&conn_id).ok_or(anyhow::anyhow!(
+                        "No found connection with given connection id: {:?}",
+                        conn_id
+                    ))?;
+                    let mtu = connection.mtu.ok_or(anyhow::anyhow!(
+                        "No found MTU for connection with given connection id: {:?}",
+                        conn_id
+                    ))?;
 
-                     Ok(response)
+                    let effective_mtu_for_data = mtu.saturating_sub(1);
+                    let end_index =  (offset + effective_mtu_for_data).min(bytes.len() as u16).min(ESP_GATT_MAX_ATTR_LEN as u16) as usize;
+
+                    log::info!("Reading characteristic with handle: {:?}-{:?}", offset, end_index);
+
+                    let mut response = GattResponse::new();
+                    response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes[offset as usize..end_index])?;
+
+
+                    Ok(response)
                 })()
                 .map_err(|err: anyhow::Error| {
                     match self.send_response(handle,interface, conn_id, trans_id, GattStatus::Error, None) {
