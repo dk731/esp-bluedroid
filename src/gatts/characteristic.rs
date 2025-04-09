@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use crossbeam_channel::bounded;
+use crossbeam_channel::{bounded, Receiver, Sender};
 use enumset::EnumSet;
 use esp_idf_svc::bt::{
     ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
@@ -85,23 +85,23 @@ where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        bincode::serde::encode_to_vec(
-            self.value
-                .read()
-                .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
-                .clone(),
-            bincode::config::standard(),
+        let value_lock = self
+            .value
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
+
+        bincode::serde::encode_to_vec((**value_lock).clone(), bincode::config::standard()).map_err(
+            |err| {
+                anyhow::anyhow!(
+                    "Failed to serialize characteristic value to bytes: {:?}",
+                    err
+                )
+            },
         )
-        .map_err(|err| {
-            anyhow::anyhow!(
-                "Failed to serialize characteristic value to bytes: {:?}",
-                err
-            )
-        })
     }
 
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
-        let (value, _): (T, usize) =
+        let (new_value, _): (T, usize) =
             bincode::serde::decode_from_slice(data, bincode::config::standard()).map_err(
                 |err| {
                     anyhow::anyhow!(
@@ -111,10 +111,20 @@ where
                 },
             )?;
 
-        self.value
+        let mut current_value = self
+            .value
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?
-            .clone_from(&value);
+            .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
+
+        let update = CharacteristicUpdate {
+            old: current_value.clone(),
+            new: Arc::new(new_value),
+        };
+
+        *current_value = update.new.clone();
+        self.udpates_tx
+            .send(update)
+            .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
 
         Ok(())
     }
@@ -124,15 +134,23 @@ pub struct Characteristic<T: Serialize + for<'de> Deserialize<'de> + Clone + Syn
     pub Arc<CharacteristicInner<T>>,
 );
 
+pub struct CharacteristicUpdate<T> {
+    pub old: Arc<T>,
+    pub new: Arc<T>,
+}
+
 pub struct CharacteristicInner<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
     pub service: Weak<ServiceInner>,
-    value: RwLock<T>,
+    value: RwLock<Arc<T>>,
 
     pub config: CharacteristicConfig,
     pub handle: RwLock<Option<Handle>>,
+
+    udpates_tx: Sender<CharacteristicUpdate<T>>,
+    pub updates_rx: Receiver<CharacteristicUpdate<T>>,
 }
 
 impl<T> Characteristic<T>
@@ -145,11 +163,15 @@ where
         value: T,
     ) -> anyhow::Result<Self> {
         let service = Arc::downgrade(&service);
+        let (tx, rx) = bounded(1);
+
         let characterstic = CharacteristicInner {
             service,
-            value: RwLock::new(value),
+            value: RwLock::new(Arc::new(value)),
             handle: RwLock::new(None),
             config,
+            udpates_tx: tx.clone(),
+            updates_rx: rx.clone(),
         };
 
         let characterstic = Self(Arc::new(characterstic));
@@ -210,7 +232,7 @@ where
             .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
 
         let current_data = bincode::serde::encode_to_vec(
-            characteristic_value.clone(),
+            (**characteristic_value).clone(),
             bincode::config::standard(),
         )?;
 
@@ -290,6 +312,40 @@ where
                 self.0.config.uuid
             );
         }
+
+        Ok(())
+    }
+
+    // This locks internal value, so while lock is held, characteristic value cannot be changed
+    pub fn value(&self) -> anyhow::Result<Arc<T>> {
+        Ok(self
+            .0
+            .value
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
+            .clone())
+    }
+
+    pub fn update_value(&self, value: T) -> anyhow::Result<()> {
+        let mut current_value = self
+            .0
+            .value
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
+
+        let update = CharacteristicUpdate {
+            old: current_value.clone(),
+            new: Arc::new(value),
+        };
+
+        *current_value = update.new.clone();
+
+        self.0
+            .udpates_tx
+            .send(update)
+            .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
+
+        // TODO: Notify all clients about the change
 
         Ok(())
     }

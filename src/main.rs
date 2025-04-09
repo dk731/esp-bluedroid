@@ -1,4 +1,7 @@
-use esp_bluedroid::{ble, gatts::characteristic::CharacteristicConfig};
+use esp_bluedroid::{
+    ble,
+    gatts::characteristic::{CharacteristicConfig, CharacteristicUpdate},
+};
 use esp_idf_svc::{
     bt::{
         ble::gatt::{GattId, GattServiceId},
@@ -79,38 +82,16 @@ fn run_ble_example() -> anyhow::Result<()> {
             notifiable: true,
             indicateable: true,
         },
-        (0..2048)
-            .map(|i| if i % 2 == 0 { 0x00 } else { 0xff })
-            .collect::<Vec<u8>>(),
+        0x25252525u128,
     )?;
 
-    let app2 = ble.gatts.register_app(777)?;
-    let service2 = app2.register_service(
-        GattServiceId {
-            id: GattId {
-                uuid: BtUuid::uuid128(4),
-                inst_id: 0,
-            },
-            is_primary: true,
-        },
-        10,
-    )?;
-    let char3 = service2.register_characteristic(
-        CharacteristicConfig {
-            uuid: BtUuid::uuid128(5),
-            value_max_len: 100,
-            readable: true,
-            writable: true,
-            broadcasted: true,
-            notifiable: true,
-            indicateable: true,
-        },
-        "Hello World".to_string(),
-    )?;
+    std::thread::spawn(move || {
+        for CharacteristicUpdate { old, new } in char2.0.updates_rx.iter() {
+            log::info!("Characteristic was update. Old: {:?}   New: {:?}", old, new);
+        }
+    });
 
     service.start()?;
-    service2.start()?;
-
     ble.gap.start_advertising()?;
 
     loop {
