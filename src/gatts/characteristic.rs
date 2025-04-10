@@ -4,9 +4,11 @@ use std::{
 };
 
 use crossbeam_channel::{bounded, Receiver, Sender};
-use enumset::EnumSet;
+use enumset::{enum_set, EnumSet};
 use esp_idf_svc::bt::{
-    ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
+    ble::gatt::{
+        AutoResponse, GattCharacteristic, GattDescriptor, GattStatus, Handle, Permission, Property,
+    },
     BtUuid,
 };
 use serde::{Deserialize, Serialize};
@@ -120,20 +122,20 @@ where
             old: current_value.clone(),
             new: Arc::new(new_value),
         };
-
         *current_value = update.new.clone();
-        self.udpates_tx
-            .send(update)
-            .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
+
+        self.handle_value_update(update)?;
 
         Ok(())
     }
 }
 
+#[derive(Clone)]
 pub struct Characteristic<T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static>(
     pub Arc<CharacteristicInner<T>>,
 );
 
+#[derive(Clone)]
 pub struct CharacteristicUpdate<T> {
     pub old: Arc<T>,
     pub new: Arc<T>,
@@ -149,7 +151,7 @@ where
     pub config: CharacteristicConfig,
     pub handle: RwLock<Option<Handle>>,
 
-    udpates_tx: Sender<CharacteristicUpdate<T>>,
+    updates_tx: Sender<CharacteristicUpdate<T>>,
     pub updates_rx: Receiver<CharacteristicUpdate<T>>,
 }
 
@@ -170,7 +172,7 @@ where
             value: RwLock::new(Arc::new(value)),
             handle: RwLock::new(None),
             config,
-            udpates_tx: tx.clone(),
+            updates_tx: tx.clone(),
             updates_rx: rx.clone(),
         };
 
@@ -185,7 +187,38 @@ where
     }
 
     fn register_bluedroid_descriptors(&self) -> anyhow::Result<()> {
-        if self.0.config.broadcasted {}
+        let service = self
+            .0
+            .service
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+        let service_handle = service
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
+            .ok_or(anyhow::anyhow!(
+                "Service handle is None, likely Service was not initialized properly"
+            ))?;
+
+        let app = service
+            .app
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
+
+        let gatts = app
+            .gatts
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+
+        if self.0.config.notifiable || self.0.config.indicateable {
+            gatts.gatts.add_descriptor(
+                service_handle,
+                &GattDescriptor {
+                    uuid: BtUuid::uuid128(0x2902),
+                    permissions: enum_set!(Permission::Read | Permission::Write),
+                },
+            )?;
+        }
 
         Ok(())
     }
@@ -339,15 +372,139 @@ where
             old: current_value.clone(),
             new: Arc::new(value),
         };
-
         *current_value = update.new.clone();
 
-        self.0
-            .udpates_tx
-            .send(update)
+        self.0.handle_value_update(update)?;
+
+        Ok(())
+    }
+}
+
+impl<T> CharacteristicInner<T>
+where
+    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
+{
+    fn handle_value_update(&self, update: CharacteristicUpdate<T>) -> anyhow::Result<()> {
+        let (tx, rx) = bounded(1);
+        let callback_key = discriminant(&GattsEvent::Confirm {
+            status: GattStatus::Busy,
+            conn_id: 0,
+            handle: 0,
+            value: None,
+        });
+
+        self.updates_tx
+            .send(update.clone())
             .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
 
-        // TODO: Notify all clients about the change
+        let service = self
+            .service
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+
+        let app = service
+            .app
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
+        let gatts_interface = app
+            .interface
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
+            .clone()
+            .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
+
+        let gatts = app
+            .gatts
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+
+        let connections = app
+            .connections
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read connections in App: {:?}", app.id))?;
+
+        let characteristic_handle = self
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read handle"))?
+            .ok_or(anyhow::anyhow!(
+                "Handle in None, likely Characteristic was not initialized properly"
+            ))?;
+
+        let notify_data =
+            bincode::serde::encode_to_vec((*update.new).clone(), bincode::config::standard())?;
+
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events in App: {:?}", app.id))?
+            .insert(callback_key, tx);
+
+        let results = connections
+            .values()
+            .map(|connection| {
+                let mtu = connection.mtu.ok_or(anyhow::anyhow!(
+                    "Failed to read MTU for connection: {:?}",
+                    connection.id
+                ))?;
+                let data_end_index = notify_data.len().min(mtu.into());
+
+                if data_end_index != notify_data.len() {
+                    log::warn!(
+                        "Data is too long to be sent, MTU is too small, cutting data: {:?}",
+                        mtu
+                    );
+                    // return Err(anyhow::anyhow!(
+                    //     "Data is too long to be sent, MTU is too small: {:?}",
+                    //     mtu
+                    // ));
+                }
+
+                gatts.gatts.indicate(
+                    gatts_interface,
+                    connection.id,
+                    characteristic_handle,
+                    &notify_data[..data_end_index],
+                )?;
+
+                match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    Ok(GattsEventMessage(
+                        _,
+                        GattsEvent::Confirm {
+                            status,
+                            conn_id,
+                            handle,
+                            ..
+                        },
+                    )) => {
+                        if conn_id != connection.id {
+                            return Err(anyhow::anyhow!(
+                                "Received unexpected GATT confirm: {:?}",
+                                conn_id
+                            ));
+                        }
+
+                        if handle != characteristic_handle {
+                            return Err(anyhow::anyhow!(
+                                "Received unexpected GATT confirm handle: {:?}",
+                                handle
+                            ));
+                        }
+
+                        if status != GattStatus::Ok {
+                            return Err(anyhow::anyhow!(
+                                "Failed to confirm characteristic indicate: {:?}",
+                                status
+                            ));
+                        }
+
+                        Ok(())
+                    }
+                    Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
+                    Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
+                }
+            })
+            .collect::<anyhow::Result<()>>();
 
         Ok(())
     }

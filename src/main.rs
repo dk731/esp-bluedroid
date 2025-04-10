@@ -85,8 +85,9 @@ fn run_ble_example() -> anyhow::Result<()> {
         0x25252525u128,
     )?;
 
+    let thread_char = char2.clone();
     std::thread::spawn(move || {
-        for CharacteristicUpdate { old, new } in char2.0.updates_rx.iter() {
+        for CharacteristicUpdate { old, new } in thread_char.0.updates_rx.iter() {
             log::info!("Characteristic was update. Old: {:?}   New: {:?}", old, new);
         }
     });
@@ -94,9 +95,12 @@ fn run_ble_example() -> anyhow::Result<()> {
     service.start()?;
     ble.gap.start_advertising()?;
 
+    let mut i = 0;
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));
-        log::info!("Still running...");
+
+        char2.update_value(i)?;
+        i += 1;
     }
 
     Ok(())
