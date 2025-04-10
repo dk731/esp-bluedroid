@@ -185,6 +185,8 @@ where
     }
 
     fn register_bluedroid_descriptors(&self) -> anyhow::Result<()> {
+        if self.0.config.broadcasted {}
+
         Ok(())
     }
 
