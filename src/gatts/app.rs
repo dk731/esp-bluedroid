@@ -16,10 +16,11 @@ use super::{
     GattsEvent, GattsEventMessage, GattsInner,
 };
 
+#[derive(Clone)]
 pub struct App(pub Arc<AppInner>);
 
 pub struct AppInner {
-    pub gatts: Weak<GattsInner>,
+    pub gatts: RwLock<Option<Weak<GattsInner>>>,
     pub interface: RwLock<Option<GattInterface>>,
     pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
     pub connections: Arc<RwLock<HashMap<ConnectionId, ConnectionInner>>>,
@@ -28,10 +29,9 @@ pub struct AppInner {
 }
 
 impl App {
-    pub fn new(gatts: Arc<GattsInner>, app_id: AppId) -> anyhow::Result<Self> {
-        let gatts = Arc::downgrade(&gatts);
+    pub fn new(app_id: AppId) -> anyhow::Result<Self> {
         let app = AppInner {
-            gatts,
+            gatts: RwLock::new(None),
             id: app_id,
             services: Arc::new(RwLock::new(HashMap::new())),
             interface: RwLock::new(None),
@@ -40,24 +40,21 @@ impl App {
 
         let app = Self(Arc::new(app));
 
-        app.register_bluedroid()?;
-        app.register_in_parent()?;
-
         Ok(app)
     }
 
-    fn register_bluedroid(&self) -> anyhow::Result<()> {
+    pub fn register_bluedroid(&self, gatts: &Arc<GattsInner>) -> anyhow::Result<()> {
+        self.0
+            .gatts
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
+            .replace(Arc::downgrade(gatts));
+
         let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceRegistered {
             status: GattStatus::Busy,
             app_id: 0,
         });
-
-        let gatts = self
-            .0
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
         gatts
             .gatts_events
@@ -87,34 +84,6 @@ impl App {
             Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT event")),
             Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT event")),
         }
-    }
-
-    fn register_in_parent(&self) -> anyhow::Result<()> {
-        let gatts = self
-            .0
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-
-        let gatts_interface = self
-            .0
-            .interface
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
-            .clone()
-            .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
-
-        if gatts
-            .apps
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts"))?
-            .insert(gatts_interface, self.0.clone())
-            .is_some()
-        {
-            log::warn!("App with ID {:?} already exists, replacing it", self.0.id);
-        }
-
-        Ok(())
     }
 
     pub fn register_service(

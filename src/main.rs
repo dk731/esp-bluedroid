@@ -1,6 +1,9 @@
 use esp_bluedroid::{
     ble,
-    gatts::characteristic::{CharacteristicConfig, CharacteristicUpdate},
+    gatts::{
+        app::App,
+        characteristic::{CharacteristicConfig, CharacteristicUpdate},
+    },
 };
 use esp_idf_svc::{
     bt::{
@@ -39,7 +42,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
     let ble = ble::Ble::new(peripherals.modem)?;
 
-    let app = ble.gatts.register_app(0)?;
+    let app = ble.gatts.register_app(App::new(0))?;
     let service = app.register_service(
         GattServiceId {
             id: GattId {

@@ -22,7 +22,7 @@ use esp_idf_svc::{
         },
         BdAddr,
     },
-    sys::{esp_gatt_rsp_t, ESP_GATT_MAX_ATTR_LEN},
+    sys::ESP_GATT_MAX_ATTR_LEN,
 };
 use event::{GattsEvent, GattsEventMessage};
 
@@ -183,8 +183,25 @@ impl Gatts {
         Ok(())
     }
 
-    pub fn register_app(&self, app_id: AppId) -> anyhow::Result<App> {
-        App::new(self.0.clone(), app_id)
+    pub fn register_app(&self, app: App) -> anyhow::Result<App> {
+        app.register_bluedroid(&self.0)?;
+        let interface = app
+            .0
+            .interface
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts interface"))?
+            .ok_or(anyhow::anyhow!(
+                "No found Gatt interface for app: {:?}",
+                app.0.id
+            ))?;
+
+        self.0
+            .apps
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts apps"))?
+            .insert(interface, app.0.clone());
+
+        Ok(app)
     }
 }
 
