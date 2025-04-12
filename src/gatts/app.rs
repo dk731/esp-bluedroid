@@ -7,7 +7,7 @@ use std::{
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::ble::gatt::{
     server::{AppId, ConnectionId},
-    GattInterface, GattServiceId, GattStatus,
+    GattInterface, GattServiceId, GattStatus, Handle,
 };
 
 use super::{
@@ -22,7 +22,7 @@ pub struct App(pub Arc<AppInner>);
 pub struct AppInner {
     pub gatts: RwLock<Option<Weak<GattsInner>>>,
     pub interface: RwLock<Option<GattInterface>>,
-    pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
+    pub services: Arc<RwLock<HashMap<Handle, Arc<ServiceInner>>>>,
     pub connections: Arc<RwLock<HashMap<ConnectionId, ConnectionInner>>>,
 
     pub id: AppId,
@@ -86,11 +86,47 @@ impl App {
         }
     }
 
-    pub fn register_service(
-        &self,
-        service_id: GattServiceId,
-        num_handles: u16,
-    ) -> anyhow::Result<Service> {
-        Service::new(self.0.clone(), service_id, num_handles)
+    pub fn register_service(&self, service: Service) -> anyhow::Result<Service> {
+        service.register_bluedroid(&self.0)?;
+        let service_handle = service
+            .0
+            .handle
+            .read()
+            .map_err(|_| {
+                anyhow::anyhow!("Failed to read Service handle, likely Service was not initialized")
+            })?
+            .ok_or(anyhow::anyhow!(
+                "Service handle is None, likely Service was not initialized properly"
+            ))?;
+
+        if self
+            .0
+            .services
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
+            .insert(service_handle, service.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!(
+                "Service with handle {:?} already exists",
+                service_handle
+            ));
+        }
+
+        Ok(service)
+    }
+}
+
+impl AppInner {
+    pub fn get_gatts(&self) -> anyhow::Result<Arc<GattsInner>> {
+        self.gatts
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
+            .as_ref()
+            .ok_or(anyhow::anyhow!(
+                "Gatts is None, likely App was not initialized properly"
+            ))?
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
     }
 }

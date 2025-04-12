@@ -195,11 +195,19 @@ impl Gatts {
                 app.0.id
             ))?;
 
-        self.0
+        if self
+            .0
             .apps
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts apps"))?
-            .insert(interface, app.0.clone());
+            .insert(interface, app.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!(
+                "App with interface {:?} already exists",
+                interface
+            ));
+        }
 
         Ok(app)
     }

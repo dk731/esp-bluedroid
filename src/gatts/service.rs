@@ -31,7 +31,7 @@ impl std::hash::Hash for ServiceId {
 pub struct Service(pub Arc<ServiceInner>);
 
 pub struct ServiceInner {
-    pub app: Weak<AppInner>,
+    pub app: RwLock<Option<Weak<AppInner>>>,
     pub id: GattServiceId,
     pub num_handles: u16,
 
@@ -40,14 +40,9 @@ pub struct ServiceInner {
 }
 
 impl Service {
-    pub fn new(
-        app: Arc<AppInner>,
-        service_id: GattServiceId,
-        num_handles: u16,
-    ) -> anyhow::Result<Self> {
-        let app = Arc::downgrade(&app);
+    pub fn new(service_id: GattServiceId, num_handles: u16) -> anyhow::Result<Self> {
         let service = ServiceInner {
-            app,
+            app: RwLock::new(None),
             id: service_id,
             handle: RwLock::new(None),
             num_handles,
@@ -56,13 +51,16 @@ impl Service {
 
         let service = Self(Arc::new(service));
 
-        service.register_bluedroid()?;
-        service.register_in_parent()?;
-
         Ok(service)
     }
 
-    fn register_bluedroid(&self) -> anyhow::Result<()> {
+    pub fn register_bluedroid(&self, app: &Arc<AppInner>) -> anyhow::Result<()> {
+        self.0
+            .app
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
+            .replace(Arc::downgrade(app));
+
         let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceCreated {
             status: GattStatus::Busy,
@@ -76,11 +74,6 @@ impl Service {
             },
         });
 
-        let app = self
-            .0
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
         let gatt_interface = app
             .interface
             .read()
@@ -91,6 +84,12 @@ impl Service {
 
         let gatts = app
             .gatts
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
+            .as_ref()
+            .ok_or(anyhow::anyhow!(
+                "Gatt interface is None, likely App was not initialized properly"
+            ))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
@@ -138,26 +137,6 @@ impl Service {
         }
     }
 
-    fn register_in_parent(&self) -> anyhow::Result<()> {
-        let app = self
-            .0
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
-
-        if app
-            .services
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts services"))?
-            .insert(ServiceId(self.0.id.clone()), self.0.clone())
-            .is_some()
-        {
-            log::warn!("App with ID {:?} already exists, replacing it", self.0.id);
-        }
-
-        Ok(())
-    }
-
     pub fn register_characteristic<T>(
         &self,
         config: CharacteristicConfig,
@@ -178,11 +157,23 @@ impl Service {
         let app = self
             .0
             .app
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read App"))?
+            .as_ref()
+            .ok_or(anyhow::anyhow!(
+                "App is None, likely Service was not initialized properly"
+            ))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
 
         let gatts = app
             .gatts
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
+            .as_ref()
+            .ok_or(anyhow::anyhow!(
+                "Gatt interface is None, likely App was not initialized properly"
+            ))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
@@ -235,16 +226,8 @@ impl Service {
             status: GattStatus::Busy,
             service_handle: 0,
         });
-        let app = self
-            .0
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-
-        let gatts = app
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+        let app = self.0.get_app()?;
+        let gatts = app.get_gatts()?;
 
         let handle = self
             .0
@@ -287,5 +270,19 @@ impl Service {
             Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
             Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
         }
+    }
+}
+
+impl ServiceInner {
+    pub fn get_app(&self) -> anyhow::Result<Arc<AppInner>> {
+        self.app
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read App"))?
+            .as_ref()
+            .ok_or(anyhow::anyhow!(
+                "App is None, likely Service was not initialized properly"
+            ))?
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
     }
 }
