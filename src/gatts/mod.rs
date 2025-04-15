@@ -1,4 +1,5 @@
 pub mod app;
+pub mod attribute;
 pub mod characteristic;
 pub mod connection;
 pub mod descriptor;
@@ -12,7 +13,7 @@ use std::{
 };
 
 use app::{App, AppInner};
-use characteristic::AnyAttribute;
+use attribute::Attribute;
 use crossbeam_channel::bounded;
 use esp_idf_svc::{
     bt::{
@@ -40,7 +41,7 @@ pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
     temporary_write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
-    attributes: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
+    attributes: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute>>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -263,7 +264,7 @@ impl GattsInner {
         &self,
         interface: GattInterface,
         handle: Handle,
-    ) -> anyhow::Result<Arc<dyn AnyAttribute>> {
+    ) -> anyhow::Result<Arc<dyn Attribute>> {
         let app = self
             .apps
             .read()

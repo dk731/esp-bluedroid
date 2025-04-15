@@ -29,18 +29,18 @@ pub struct AppInner {
 }
 
 impl App {
-    pub fn new(app_id: AppId) -> anyhow::Result<Self> {
+    pub fn new(app_id: AppId) -> Self {
         let app = AppInner {
             gatts: Default::default(),
             id: app_id,
-            services: Arc::new(RwLock::new(HashMap::new())),
+            services: Default::default(),
             interface: RwLock::new(None),
-            connections: Arc::new(RwLock::new(HashMap::new())),
+            connections: Default::default(),
         };
 
         let app = Self(Arc::new(app));
 
-        Ok(app)
+        app
     }
 
     pub fn register_bluedroid(&self, gatts: &Arc<GattsInner>) -> anyhow::Result<()> {

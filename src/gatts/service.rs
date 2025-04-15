@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{AnyAttribute, Characteristic, CharacteristicConfig},
+    attribute::Attribute,
+    characteristic::{Characteristic, CharacteristicConfig},
     GattsEvent, GattsEventMessage,
 };
 
@@ -35,23 +36,23 @@ pub struct ServiceInner {
     pub id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
+    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
 impl Service {
-    pub fn new(service_id: GattServiceId, num_handles: u16) -> anyhow::Result<Self> {
+    pub fn new(service_id: GattServiceId, num_handles: u16) -> Self {
         let service = ServiceInner {
             app: Default::default(),
             id: service_id,
             handle: RwLock::new(None),
             num_handles,
-            characteristics: Arc::new(RwLock::new(HashMap::new())),
+            characteristics: Default::default(),
         };
 
         let service = Self(Arc::new(service));
 
-        Ok(service)
+        service
     }
 
     pub fn register_bluedroid(&self, app: &Arc<AppInner>) -> anyhow::Result<()> {

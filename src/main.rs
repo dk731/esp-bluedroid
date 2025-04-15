@@ -2,7 +2,8 @@ use esp_bluedroid::{
     ble,
     gatts::{
         app::App,
-        characteristic::{CharacteristicConfig, CharacteristicUpdate},
+        characteristic::{Characteristic, CharacteristicConfig, CharacteristicUpdate},
+        service::Service,
     },
 };
 use esp_idf_svc::{
@@ -43,7 +44,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     let ble = ble::Ble::new(peripherals.modem)?;
 
     let app = ble.gatts.register_app(App::new(0))?;
-    let service = app.register_service(
+    let service = app.register_service(Service::new(
         GattServiceId {
             id: GattId {
                 uuid: BtUuid::uuid128(1),
@@ -52,9 +53,9 @@ fn run_ble_example() -> anyhow::Result<()> {
             is_primary: true,
         },
         10,
-    )?;
+    ))?;
 
-    let char1 = service.register_characteristic(
+    let char1 = service.register_characteristic(Characteristic::new(
         CharacteristicConfig {
             uuid: BtUuid::uuid128(2),
             value_max_len: 100,
@@ -64,29 +65,8 @@ fn run_ble_example() -> anyhow::Result<()> {
             notifiable: true,
             indicateable: true,
         },
-        CoolNestedChar {
-            bar: "bar".to_string(),
-            foo_bar: FooBar {
-                bar: "bar".to_string(),
-                foo_bar: "foo_bar".to_string(),
-            },
-            temperature: 0,
-            messages: vec!["Hello".to_string(), "World".to_string()],
-        },
-    )?;
-
-    let char2 = service.register_characteristic(
-        CharacteristicConfig {
-            uuid: BtUuid::uuid128(3),
-            value_max_len: 4096,
-            readable: true,
-            writable: true,
-            broadcasted: true,
-            notifiable: true,
-            indicateable: true,
-        },
-        0x25252525u128,
-    )?;
+        "Hello world!",
+    ))?;
 
     let thread_char = char2.clone();
     std::thread::spawn(move || {

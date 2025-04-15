@@ -13,7 +13,7 @@ use esp_idf_svc::bt::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{event::GattsEventMessage, service::ServiceInner, GattsEvent};
+use super::{attribute::Attribute, event::GattsEventMessage, service::ServiceInner, GattsEvent};
 
 pub struct CharacteristicConfig {
     pub uuid: BtUuid,
@@ -77,12 +77,7 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-pub trait AnyAttribute: Send + Sync {
-    fn as_bytes(&self) -> anyhow::Result<Vec<u8>>;
-    fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
-}
-
-impl<T> AnyAttribute for CharacteristicInner<T>
+impl<T> Attribute for CharacteristicInner<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
@@ -136,14 +131,17 @@ pub struct Characteristic<T: Serialize + for<'de> Deserialize<'de> + Clone + Syn
 );
 
 #[derive(Clone)]
-pub struct CharacteristicUpdate<T> {
+pub struct CharacteristicUpdate<T>
+where
+    T: Clone,
+{
     pub old: Arc<T>,
     pub new: Arc<T>,
 }
 
 pub struct CharacteristicInner<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
+    T: Clone,
 {
     pub service: RwLock<Weak<ServiceInner>>,
     value: RwLock<Arc<T>>,
@@ -159,7 +157,7 @@ impl<T> Characteristic<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
-    pub fn new(config: CharacteristicConfig, value: T) -> anyhow::Result<Self> {
+    pub fn new(config: CharacteristicConfig, value: T) -> Self {
         let (tx, rx) = bounded(1);
 
         let characterstic = CharacteristicInner {
@@ -173,16 +171,17 @@ where
 
         let characterstic = Self(Arc::new(characterstic));
 
-        characterstic.register_bluedroid_characteristic()?;
-        characterstic.register_bluedroid_descriptors()?;
+        // characterstic.register_bluedroid_characteristic()?;
+        // characterstic.register_bluedroid_descriptors()?;
 
-        characterstic.register_in_parent()?;
-
-        Ok(characterstic)
+        characterstic
     }
 
     fn register_bluedroid_descriptors(&self) -> anyhow::Result<()> {
-        // let service = self.0.
+        let service = self.0.get_service()?;
+        let app = service.get_app()?;
+        let gatts = app.get_gatts()?;
+
         let service_handle = service
             .handle
             .read()
@@ -190,16 +189,6 @@ where
             .ok_or(anyhow::anyhow!(
                 "Service handle is None, likely Service was not initialized properly"
             ))?;
-
-        let app = service
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-
-        let gatts = app
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
         if self.0.config.notifiable || self.0.config.indicateable {
             gatts.gatts.add_descriptor(
@@ -223,11 +212,10 @@ where
             char_uuid: BtUuid::uuid16(0),
         });
 
-        let service = self
-            .0
-            .service
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+        let service = self.0.get_service()?;
+        let app = service.get_app()?;
+        let gatts = app.get_gatts()?;
+
         let service_handle = service
             .handle
             .read()
@@ -236,35 +224,15 @@ where
                 "Service handle is None, likely Service was not initialized properly"
             ))?;
 
-        let app = service
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-
-        let gatts = app
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
         gatts
             .gatts_events
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key, tx);
 
-        let characteristic_value = self
-            .0
-            .value
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
-
-        let current_data = bincode::serde::encode_to_vec(
-            (**characteristic_value).clone(),
-            bincode::config::standard(),
-        )?;
-
         gatts
             .gatts
-            .add_characteristic(service_handle, &(&self.0.config).into(), &current_data)?;
+            .add_characteristic(service_handle, &(&self.0.config).into(), &[])?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
@@ -341,7 +309,7 @@ where
 
 impl<T> CharacteristicInner<T>
 where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
+    T: Clone + Serialize,
 {
     fn handle_value_update(&self, update: CharacteristicUpdate<T>) -> anyhow::Result<()> {
         let (tx, rx) = bounded(1);
@@ -356,26 +324,16 @@ where
             .send(update.clone())
             .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
 
-        let service = self
-            .service
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+        let service = self.get_service()?;
+        let app = service.get_app()?;
+        let gatts = app.get_gatts()?;
 
-        let app = service
-            .app
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
         let gatts_interface = app
             .interface
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
             .clone()
             .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
-
-        let gatts = app
-            .gatts
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
         let connections = app
             .connections
@@ -399,7 +357,7 @@ where
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events in App: {:?}", app.id))?
             .insert(callback_key, tx);
 
-        let results = connections
+        let send_results = connections
             .values()
             .map(|connection| {
                 let mtu = connection.mtu.ok_or(anyhow::anyhow!(
@@ -463,8 +421,33 @@ where
                     Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
                 }
             })
-            .collect::<anyhow::Result<()>>();
+            .collect::<Vec<anyhow::Result<()>>>();
+
+        let errors: Vec<anyhow::Error> = send_results
+            .into_iter()
+            .filter_map(anyhow::Result::err)
+            .collect();
+
+        if !errors.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Failed to notify some of connections: {:?}",
+                errors
+            ));
+        }
 
         Ok(())
+    }
+}
+
+impl<T> CharacteristicInner<T>
+where
+    T: Clone,
+{
+    fn get_service(&self) -> anyhow::Result<Arc<ServiceInner>> {
+        self.service
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Service"))?
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))
     }
 }
