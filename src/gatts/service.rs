@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    characteristic::{AnyCharacteristic, Characteristic, CharacteristicConfig},
+    characteristic::{AnyAttribute, Characteristic, CharacteristicConfig},
     GattsEvent, GattsEventMessage,
 };
 
@@ -31,18 +31,18 @@ impl std::hash::Hash for ServiceId {
 pub struct Service(pub Arc<ServiceInner>);
 
 pub struct ServiceInner {
-    pub app: RwLock<Option<Weak<AppInner>>>,
+    pub app: RwLock<Weak<AppInner>>,
     pub id: GattServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyCharacteristic>>>>,
+    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
 impl Service {
     pub fn new(service_id: GattServiceId, num_handles: u16) -> anyhow::Result<Self> {
         let service = ServiceInner {
-            app: RwLock::new(None),
+            app: Default::default(),
             id: service_id,
             handle: RwLock::new(None),
             num_handles,
@@ -55,11 +55,11 @@ impl Service {
     }
 
     pub fn register_bluedroid(&self, app: &Arc<AppInner>) -> anyhow::Result<()> {
-        self.0
+        *self
+            .0
             .app
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
-            .replace(Arc::downgrade(app));
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))? = Arc::downgrade(app);
 
         let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceCreated {
@@ -86,10 +86,6 @@ impl Service {
             .gatts
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
-            .as_ref()
-            .ok_or(anyhow::anyhow!(
-                "Gatt interface is None, likely App was not initialized properly"
-            ))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
 
@@ -139,13 +135,14 @@ impl Service {
 
     pub fn register_characteristic<T>(
         &self,
-        config: CharacteristicConfig,
-        value: T,
+        characteristic: Characteristic<T>,
     ) -> anyhow::Result<Characteristic<T>>
     where
         T: Serialize + for<'de> Deserialize<'de> + Sync + Send + Clone,
     {
-        Characteristic::new(self.0.clone(), config, value)
+        // Characteristic::new(self.0.clone(), config, value)
+
+        todo!()
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
@@ -154,28 +151,8 @@ impl Service {
             status: GattStatus::Busy,
             service_handle: 0,
         });
-        let app = self
-            .0
-            .app
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read App"))?
-            .as_ref()
-            .ok_or(anyhow::anyhow!(
-                "App is None, likely Service was not initialized properly"
-            ))?
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade App"))?;
-
-        let gatts = app
-            .gatts
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
-            .as_ref()
-            .ok_or(anyhow::anyhow!(
-                "Gatt interface is None, likely App was not initialized properly"
-            ))?
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+        let app = self.0.get_app()?;
+        let gatts = app.get_gatts()?;
 
         let handle = self
             .0
@@ -278,10 +255,6 @@ impl ServiceInner {
         self.app
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read App"))?
-            .as_ref()
-            .ok_or(anyhow::anyhow!(
-                "App is None, likely Service was not initialized properly"
-            ))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
     }

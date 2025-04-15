@@ -20,7 +20,7 @@ use super::{
 pub struct App(pub Arc<AppInner>);
 
 pub struct AppInner {
-    pub gatts: RwLock<Option<Weak<GattsInner>>>,
+    pub gatts: RwLock<Weak<GattsInner>>,
     pub interface: RwLock<Option<GattInterface>>,
     pub services: Arc<RwLock<HashMap<Handle, Arc<ServiceInner>>>>,
     pub connections: Arc<RwLock<HashMap<ConnectionId, ConnectionInner>>>,
@@ -31,7 +31,7 @@ pub struct AppInner {
 impl App {
     pub fn new(app_id: AppId) -> anyhow::Result<Self> {
         let app = AppInner {
-            gatts: RwLock::new(None),
+            gatts: Default::default(),
             id: app_id,
             services: Arc::new(RwLock::new(HashMap::new())),
             interface: RwLock::new(None),
@@ -44,11 +44,12 @@ impl App {
     }
 
     pub fn register_bluedroid(&self, gatts: &Arc<GattsInner>) -> anyhow::Result<()> {
-        self.0
+        *self
+            .0
             .gatts
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
-            .replace(Arc::downgrade(gatts));
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))? =
+            Arc::downgrade(gatts);
 
         let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::ServiceRegistered {
@@ -122,10 +123,6 @@ impl AppInner {
         self.gatts
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
-            .as_ref()
-            .ok_or(anyhow::anyhow!(
-                "Gatts is None, likely App was not initialized properly"
-            ))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
     }

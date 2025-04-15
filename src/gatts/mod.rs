@@ -8,11 +8,11 @@ pub mod service;
 use std::{
     collections::HashMap,
     mem::{discriminant, Discriminant},
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard},
 };
 
 use app::{App, AppInner};
-use characteristic::AnyCharacteristic;
+use characteristic::AnyAttribute;
 use crossbeam_channel::bounded;
 use esp_idf_svc::{
     bt::{
@@ -40,6 +40,7 @@ pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
     temporary_write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
+    attributes: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -51,9 +52,10 @@ impl Gatts {
         let gatts = EspGatts::new(bt)?;
         let gatts_inner = GattsInner {
             gatts,
-            apps: Arc::new(RwLock::new(HashMap::new())),
-            gatts_events: Arc::new(RwLock::new(HashMap::new())),
-            temporary_write_buffer: Arc::new(RwLock::new(HashMap::new())),
+            apps: Default::default(),
+            gatts_events: Default::default(),
+            temporary_write_buffer: Default::default(),
+            attributes: Default::default(),
         };
 
         let gatts = Self(Arc::new(gatts_inner));
@@ -261,7 +263,7 @@ impl GattsInner {
         &self,
         interface: GattInterface,
         handle: Handle,
-    ) -> anyhow::Result<Arc<dyn AnyCharacteristic>> {
+    ) -> anyhow::Result<Arc<dyn AnyAttribute>> {
         let app = self
             .apps
             .read()

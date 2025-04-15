@@ -77,12 +77,12 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-pub trait AnyCharacteristic: Send + Sync {
+pub trait AnyAttribute: Send + Sync {
     fn as_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()>;
 }
 
-impl<T> AnyCharacteristic for CharacteristicInner<T>
+impl<T> AnyAttribute for CharacteristicInner<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
@@ -145,7 +145,7 @@ pub struct CharacteristicInner<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
-    pub service: Weak<ServiceInner>,
+    pub service: RwLock<Weak<ServiceInner>>,
     value: RwLock<Arc<T>>,
 
     pub config: CharacteristicConfig,
@@ -159,16 +159,11 @@ impl<T> Characteristic<T>
 where
     T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
 {
-    pub fn new(
-        service: Arc<ServiceInner>,
-        config: CharacteristicConfig,
-        value: T,
-    ) -> anyhow::Result<Self> {
-        let service = Arc::downgrade(&service);
+    pub fn new(config: CharacteristicConfig, value: T) -> anyhow::Result<Self> {
         let (tx, rx) = bounded(1);
 
         let characterstic = CharacteristicInner {
-            service,
+            service: RwLock::new(Weak::new()),
             value: RwLock::new(Arc::new(value)),
             handle: RwLock::new(None),
             config,
@@ -187,11 +182,7 @@ where
     }
 
     fn register_bluedroid_descriptors(&self) -> anyhow::Result<()> {
-        let service = self
-            .0
-            .service
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
+        // let service = self.0.
         let service_handle = service
             .handle
             .read()
@@ -317,38 +308,6 @@ where
             Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
             Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT event")),
         }
-    }
-
-    fn register_in_parent(&self) -> anyhow::Result<()> {
-        let service = self
-            .0
-            .service
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Service"))?;
-
-        let handle = self
-            .0
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Handle in None, likely Characteristic was not initialized properly"
-            ))?;
-
-        if service
-            .characteristics
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write service characteristics"))?
-            .insert(handle.clone(), self.0.clone())
-            .is_some()
-        {
-            log::warn!(
-                "Characteristic with UUID {:?} already exists, replacing it",
-                self.0.config.uuid
-            );
-        }
-
-        Ok(())
     }
 
     // This locks internal value, so while lock is held, characteristic value cannot be changed
