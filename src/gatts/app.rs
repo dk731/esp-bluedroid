@@ -63,7 +63,9 @@ impl App {
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key.clone(), tx.clone());
 
-        gatts.gatts.register_app(self.0.id)?;
+        gatts.gatts.register_app(self.0.id).map_err(|err| {
+            anyhow::anyhow!("Failed to register GATT app {:?}: {:?}", self.0.id, err)
+        })?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(interface, GattsEvent::ServiceRegistered { status, app_id })) => {

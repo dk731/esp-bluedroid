@@ -157,31 +157,34 @@ impl Gatts {
 
     fn init_callback(&self) -> anyhow::Result<()> {
         let callback_inner_ref = Arc::downgrade(&self.0.gatts_events);
-        self.0.gatts.subscribe(move |(interface, e)| {
-            log::info!("Received event {:?}", (interface, &e));
+        self.0
+            .gatts
+            .subscribe(move |(interface, e)| {
+                log::info!("Received event {:?}", (interface, &e));
 
-            let Some(callback_map) = callback_inner_ref.upgrade() else {
-                log::error!("Failed to upgrade Gatts events map");
-                return;
-            };
+                let Some(callback_map) = callback_inner_ref.upgrade() else {
+                    log::error!("Failed to upgrade Gatts events map");
+                    return;
+                };
 
-            let Ok(callback_map) = callback_map.read() else {
-                log::error!("Failed to acquire read lock on Gatts events map");
-                return;
-            };
+                let Ok(callback_map) = callback_map.read() else {
+                    log::error!("Failed to acquire read lock on Gatts events map");
+                    return;
+                };
 
-            let event = GattsEvent::from(e);
-            let Some(sender) = callback_map.get(&discriminant(&event)) else {
-                log::warn!("No callback found for event {:?}", event);
-                return;
-            };
+                let event = GattsEvent::from(e);
+                let Some(sender) = callback_map.get(&discriminant(&event)) else {
+                    log::warn!("No callback found for event {:?}", event);
+                    return;
+                };
 
-            sender
-                .send(GattsEventMessage(interface, event))
-                .unwrap_or_else(|err| {
-                    log::error!("Failed to send event: {:?}", err);
-                });
-        })?;
+                sender
+                    .send(GattsEventMessage(interface, event))
+                    .unwrap_or_else(|err| {
+                        log::error!("Failed to send event: {:?}", err);
+                    });
+            })
+            .map_err(|err| anyhow::anyhow!("Failed to subscribe to GATT events: {:?}", err))?;
 
         Ok(())
     }
@@ -238,7 +241,8 @@ impl GattsInner {
             .insert(callback_key.clone(), tx.clone());
 
         self.gatts
-            .send_response(gatts_if, conn_id, trans_id, status, response)?;
+            .send_response(gatts_if, conn_id, trans_id, status, response)
+            .map_err(|err| anyhow::anyhow!("Failed to send GATT response: {:?}", err))?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(_, GattsEvent::ResponseComplete { status, handle })) => {

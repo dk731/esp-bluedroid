@@ -243,7 +243,14 @@ where
 
         gatts
             .gatts
-            .add_characteristic(service_handle, &(&self.0.config).into(), &[])?;
+            .add_characteristic(service_handle, &(&self.0.config).into(), &[])
+            .map_err(|err| {
+                anyhow::anyhow!(
+                    "Failed to register GATT characteristic {:?}: {:?}",
+                    self.0.config.uuid,
+                    err
+                )
+            })?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
@@ -388,12 +395,21 @@ where
                     // ));
                 }
 
-                gatts.gatts.indicate(
-                    gatts_interface,
-                    connection.id,
-                    characteristic_handle,
-                    &notify_data[..data_end_index],
-                )?;
+                gatts
+                    .gatts
+                    .indicate(
+                        gatts_interface,
+                        connection.id,
+                        characteristic_handle,
+                        &notify_data[..data_end_index],
+                    )
+                    .map_err(|err| {
+                        anyhow::anyhow!(
+                            "Failed to send GATT indication to {:?}: {:?}",
+                            connection.address,
+                            err
+                        )
+                    })?;
 
                 match rx.recv_timeout(std::time::Duration::from_secs(5)) {
                     Ok(GattsEventMessage(

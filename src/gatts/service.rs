@@ -96,7 +96,12 @@ impl Service {
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key.clone(), tx.clone());
 
-        gatts.gatts.create_service(gatt_interface, &self.0.id, 10)?;
+        gatts
+            .gatts
+            .create_service(gatt_interface, &self.0.id, 10)
+            .map_err(|err| {
+                anyhow::anyhow!("Failed to create GATT service {:?}: {:?}", self.0.id, err)
+            })?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
@@ -193,7 +198,9 @@ impl Service {
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key, tx);
 
-        gatts.gatts.start_service(handle.clone())?;
+        gatts.gatts.start_service(handle.clone()).map_err(|err| {
+            anyhow::anyhow!("Failed to start GATT service {:?}: {:?}", handle, err)
+        })?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
@@ -245,7 +252,9 @@ impl Service {
             .map_err(|_| anyhow::anyhow!("Failed to write Gatts events"))?
             .insert(callback_key, tx);
 
-        gatts.gatts.stop_service(handle.clone())?;
+        gatts.gatts.stop_service(handle.clone()).map_err(|err| {
+            anyhow::anyhow!("Failed to stop GATT service {:?}: {:?}", handle, err)
+        })?;
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
