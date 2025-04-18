@@ -65,10 +65,10 @@ fn run_ble_example() -> anyhow::Result<()> {
             notifiable: true,
             indicateable: true,
         },
-        "Hello world!",
+        123,
     ))?;
 
-    let thread_char = char2.clone();
+    let thread_char = char1.clone();
     std::thread::spawn(move || {
         for CharacteristicUpdate { old, new } in thread_char.0.updates_rx.iter() {
             log::info!("Characteristic was update. Old: {:?}   New: {:?}", old, new);
@@ -82,7 +82,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     loop {
         std::thread::sleep(std::time::Duration::from_secs(10));
 
-        char2.update_value(i)?;
+        char1.update_value(i)?;
         i += 1;
     }
 

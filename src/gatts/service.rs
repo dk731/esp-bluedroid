@@ -142,6 +142,29 @@ impl Service {
         T: Serialize + for<'de> Deserialize<'de> + Sync + Send + Clone,
     {
         // Characteristic::new(self.0.clone(), config, value)
+        characteristic.register_bluedroid(&self.0)?;
+        let characteristic_handle = characteristic
+            .0
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Characteristic handle"))?
+            .ok_or(anyhow::anyhow!(
+                "Characteristic handle is None, likely Characteristic was not initialized properly"
+            ))?;
+
+        if self
+            .0
+            .characteristics
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
+            .insert(characteristic_handle, characteristic.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!(
+                "Characteristic with handle {:?} already exists",
+                characteristic_handle
+            ));
+        }
 
         todo!()
     }

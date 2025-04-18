@@ -13,7 +13,12 @@ use esp_idf_svc::bt::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{attribute::Attribute, event::GattsEventMessage, service::ServiceInner, GattsEvent};
+use super::{
+    attribute::Attribute,
+    event::GattsEventMessage,
+    service::{Service, ServiceInner},
+    GattsEvent,
+};
 
 pub struct CharacteristicConfig {
     pub uuid: BtUuid,
@@ -203,7 +208,13 @@ where
         Ok(())
     }
 
-    fn register_bluedroid_characteristic(&self) -> anyhow::Result<()> {
+    pub fn register_bluedroid(&self, service: &Arc<ServiceInner>) -> anyhow::Result<()> {
+        *self
+            .0
+            .service
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Service"))? = Arc::downgrade(service);
+
         let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::CharacteristicAdded {
             status: GattStatus::Busy,
