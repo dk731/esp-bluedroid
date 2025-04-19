@@ -2,21 +2,19 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     mem::discriminant,
-    sync::{mpsc, Arc, RwLock, Weak},
+    sync::{Arc, RwLock, Weak},
 };
 
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
-    BdAddr, BtUuid,
+    BtUuid,
 };
 use serde::{Deserialize, Serialize};
 
 use super::{
-    app::AppInner,
-    attribute::Attribute,
-    characteristic::{Characteristic, CharacteristicConfig},
-    GattsEvent, GattsEventMessage,
+    app::AppInner, attribute::Attribute, characteristic::Characteristic, GattsEvent,
+    GattsEventMessage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +31,7 @@ pub struct Service(pub Arc<ServiceInner>);
 
 pub struct ServiceInner {
     pub app: RwLock<Weak<AppInner>>,
-    pub id: GattServiceId,
+    pub id: ServiceId,
     pub num_handles: u16,
 
     pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute>>>>,
@@ -44,7 +42,7 @@ impl Service {
     pub fn new(service_id: GattServiceId, num_handles: u16) -> Self {
         let service = ServiceInner {
             app: Default::default(),
-            id: service_id,
+            id: ServiceId(service_id),
             handle: RwLock::new(None),
             num_handles,
             characteristics: Default::default(),
@@ -98,7 +96,7 @@ impl Service {
 
         gatts
             .gatts
-            .create_service(gatt_interface, &self.0.id, 10)
+            .create_service(gatt_interface, &self.0.id.0, 10)
             .map_err(|err| {
                 anyhow::anyhow!("Failed to create GATT service {:?}: {:?}", self.0.id, err)
             })?;
@@ -112,7 +110,7 @@ impl Service {
                     service_id,
                 },
             )) => {
-                if service_id != self.0.id {
+                if service_id != self.0.id.0 {
                     return Err(anyhow::anyhow!(
                         "Received unexpected GATT service id: {:?}",
                         service_id
@@ -146,7 +144,6 @@ impl Service {
     where
         T: Serialize + for<'de> Deserialize<'de> + Sync + Send + Clone,
     {
-        // Characteristic::new(self.0.clone(), config, value)
         characteristic.register_bluedroid(&self.0)?;
         let characteristic_handle = characteristic
             .0
@@ -171,7 +168,7 @@ impl Service {
             ));
         }
 
-        todo!()
+        Ok(characteristic)
     }
 
     pub fn start(&self) -> anyhow::Result<()> {

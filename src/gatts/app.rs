@@ -22,7 +22,7 @@ pub struct App(pub Arc<AppInner>);
 pub struct AppInner {
     pub gatts: RwLock<Weak<GattsInner>>,
     pub interface: RwLock<Option<GattInterface>>,
-    pub services: Arc<RwLock<HashMap<Handle, Arc<ServiceInner>>>>,
+    pub services: Arc<RwLock<HashMap<ServiceId, Arc<ServiceInner>>>>,
     pub connections: Arc<RwLock<HashMap<ConnectionId, ConnectionInner>>>,
 
     pub id: AppId,
@@ -91,28 +91,18 @@ impl App {
 
     pub fn register_service(&self, service: Service) -> anyhow::Result<Service> {
         service.register_bluedroid(&self.0)?;
-        let service_handle = service
-            .0
-            .handle
-            .read()
-            .map_err(|_| {
-                anyhow::anyhow!("Failed to read Service handle, likely Service was not initialized")
-            })?
-            .ok_or(anyhow::anyhow!(
-                "Service handle is None, likely Service was not initialized properly"
-            ))?;
 
         if self
             .0
             .services
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
-            .insert(service_handle, service.0.clone())
+            .insert(service.0.id.clone(), service.0.clone())
             .is_some()
         {
             return Err(anyhow::anyhow!(
                 "Service with handle {:?} already exists",
-                service_handle
+                service.0.id
             ));
         }
 

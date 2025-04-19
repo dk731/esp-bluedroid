@@ -9,7 +9,7 @@ pub mod service;
 use std::{
     collections::HashMap,
     mem::{discriminant, Discriminant},
-    sync::{Arc, RwLock, RwLockReadGuard},
+    sync::{Arc, RwLock},
 };
 
 use app::{App, AppInner};
@@ -18,7 +18,7 @@ use crossbeam_channel::bounded;
 use esp_idf_svc::{
     bt::{
         ble::gatt::{
-            server::{AppId, ConnectionId, EspGatts, TransferId},
+            server::{ConnectionId, EspGatts, TransferId},
             GattConnParams, GattConnReason, GattInterface, GattResponse, GattStatus, Handle,
         },
         BdAddr,
@@ -32,7 +32,7 @@ use esp_idf_svc as svc;
 
 struct PrepareWriteBuffer {
     value: Vec<u8>,
-    characteristic_handle: Handle,
+    handle: Handle,
 }
 
 pub struct Gatts(pub Arc<GattsInner>);
@@ -40,7 +40,7 @@ pub struct Gatts(pub Arc<GattsInner>);
 pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
-    temporary_write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
+    write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
     attributes: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute>>>>,
 
     gatts_events: Arc<
@@ -55,7 +55,7 @@ impl Gatts {
             gatts,
             apps: Default::default(),
             gatts_events: Default::default(),
-            temporary_write_buffer: Default::default(),
+            write_buffer: Default::default(),
             attributes: Default::default(),
         };
 
@@ -222,7 +222,7 @@ impl Gatts {
 impl GattsInner {
     fn send_response(
         &self,
-        characteristic_handle: Handle,
+        attribute_handle: Handle,
         gatts_if: GattInterface,
         conn_id: ConnectionId,
         trans_id: TransferId,
@@ -246,10 +246,10 @@ impl GattsInner {
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(_, GattsEvent::ResponseComplete { status, handle })) => {
-                if characteristic_handle != handle {
+                if attribute_handle != handle {
                     return Err(anyhow::anyhow!(
-                        "Received unexpected GATT characteristic handle: {:?}",
-                        characteristic_handle
+                        "Received unexpected GATT attribute handle: {:?}",
+                        attribute_handle
                     ));
                 }
 
@@ -264,52 +264,19 @@ impl GattsInner {
         }
     }
 
-    fn get_characteristic_lock(
-        &self,
-        interface: GattInterface,
-        handle: Handle,
-    ) -> anyhow::Result<Arc<dyn Attribute>> {
-        let app = self
-            .apps
+    fn get_attribute(&self, handle: Handle) -> anyhow::Result<Arc<dyn Attribute>> {
+        let attribute = self
+            .attributes
             .read()
-            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts apps"))?
-            .get(&interface)
+            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts attributes"))?
+            .get(&handle)
             .ok_or(anyhow::anyhow!(
-                "No found app with given gatts interface: {:?}",
-                interface
+                "No found attribute with given handle: {:?}",
+                handle
             ))?
             .clone();
 
-        let services = &app
-            .services
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts services"))?;
-
-        let characteristic = {
-            let mut result = None;
-            for service in services.values() {
-                let characteristic = service
-                    .characteristics
-                    .read()
-                    .map_err(|_| {
-                        anyhow::anyhow!("Failed to acquire read lock on Gatts characteristics")
-                    })?
-                    .get(&handle)
-                    .cloned();
-
-                if let Some(c) = characteristic {
-                    result = Some(c);
-                    break;
-                }
-            }
-            result
-        }
-        .ok_or(anyhow::anyhow!(
-            "Not found characteristic with given handle: {:?}",
-            handle
-        ))?;
-
-        Ok(characteristic)
+        Ok(attribute)
     }
 
     fn handle_gatts_global_event(&self, event: GattsEventMessage) -> anyhow::Result<()> {
@@ -331,8 +298,8 @@ impl GattsInner {
                 }
 
                 let response = (|| {
-                    let characteristic = self.get_characteristic_lock(interface, handle)?;
-                    let bytes = characteristic.as_bytes()?;
+                    let attribute = self.get_attribute( handle)?;
+                    let bytes = attribute.as_bytes()?;
 
                     let app = self.apps.read().map_err(|_| {
                         anyhow::anyhow!("Failed to acquire read lock on Gatts connections")
@@ -356,8 +323,6 @@ impl GattsInner {
                     let effective_mtu_for_data = mtu.saturating_sub(1);
                     let end_index =  (offset + effective_mtu_for_data).min(bytes.len() as u16).min(ESP_GATT_MAX_ATTR_LEN as u16) as usize;
 
-                    log::info!("Reading characteristic with handle: {:?}-{:?}", offset, end_index);
-
                     let mut response = GattResponse::new();
                     response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes[offset as usize..end_index])?;
 
@@ -366,9 +331,9 @@ impl GattsInner {
                 })()
                 .map_err(|err: anyhow::Error| {
                     match self.send_response(handle,interface, conn_id, trans_id, GattStatus::Error, None) {
-                        Ok(_) => anyhow::anyhow!("Failed to prepare characteristics bytes: {:?}", err),
+                        Ok(_) => anyhow::anyhow!("Failed to prepare attribute bytes: {:?}", err),
                         Err(send_err) => {
-                            anyhow::anyhow!("Failed to prepare characteristics bytes ({:?}) and send error response ({:?})", err, send_err)
+                            anyhow::anyhow!("Failed to prepare attribute bytes ({:?}) and send error response ({:?})", err, send_err)
                         }
                     }
                 })?;
@@ -398,12 +363,12 @@ impl GattsInner {
                 },
             ) => {
                 let result: anyhow::Result<()> = (|| {
-                    let mut temp_storage = self.temporary_write_buffer.write().map_err(|_| {
+                    let mut temp_storage = self.write_buffer.write().map_err(|_| {
                         anyhow::anyhow!("Failed to acquire write lock on temporary write buffer")
                     })?;
                     let temp_buffer = temp_storage.entry(trans_id).or_insert(PrepareWriteBuffer {
                         value: Vec::new(),
-                        characteristic_handle: handle,
+                        handle,
                     });
 
                     if temp_buffer.value.len() < offset as usize + value.len() {
@@ -413,11 +378,8 @@ impl GattsInner {
                         .copy_from_slice(&value);
 
                     if !is_prep {
-                        log::info!("Updating characteristic with handle: {:?}", handle);
-                        let characteristic = self.get_characteristic_lock(interface, handle)?;
-
-                        log::info!("Updating characteristic bytes: {:?}", temp_buffer.value);
-                        characteristic.update_from_bytes(&temp_buffer.value)?;
+                        let attribute = self.get_attribute(handle)?;
+                        attribute.update_from_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())
@@ -460,22 +422,18 @@ impl GattsInner {
             ) => {
                 let mut handle = None;
                 let result = (|| {
-                    let temp_storage = self.temporary_write_buffer.write().map_err(|_| {
+                    let temp_storage = self.write_buffer.write().map_err(|_| {
                         anyhow::anyhow!("Failed to acquire write lock on temporary write buffer")
                     })?;
                     let temp_buffer = temp_storage.get(&trans_id).ok_or(anyhow::anyhow!(
                         "Not found temporary write buffer with given transfer id: {:?}",
                         trans_id
                     ))?;
-                    handle.replace(temp_buffer.characteristic_handle);
+                    handle.replace(temp_buffer.handle);
 
                     if !canceled {
-                        let characteristic = self.get_characteristic_lock(
-                            interface,
-                            temp_buffer.characteristic_handle,
-                        )?;
-
-                        characteristic.update_from_bytes(&temp_buffer.value)?;
+                        let attribute = self.get_attribute(temp_buffer.handle)?;
+                        attribute.update_from_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())
