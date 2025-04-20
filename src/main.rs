@@ -71,7 +71,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     let thread_char = char1.clone();
     std::thread::spawn(move || {
         for CharacteristicUpdate { old, new } in thread_char.0.updates_rx.iter() {
-            log::info!("Characteristic was update. Old: {:?}   New: {:?}", old, new);
+            log::info!("Characteristic was update.\tOld: {:?}\tNew: {:?}", old, new);
         }
     });
 
@@ -80,7 +80,7 @@ fn run_ble_example() -> anyhow::Result<()> {
 
     let mut i = 0;
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(10));
+        std::thread::sleep(std::time::Duration::from_secs(1));
 
         char1.update_value(i)?;
         i += 1;

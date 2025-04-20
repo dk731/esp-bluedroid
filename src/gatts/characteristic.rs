@@ -176,13 +176,22 @@ where
 
         let characterstic = Self(Arc::new(characterstic));
 
-        // characterstic.register_bluedroid_characteristic()?;
-        // characterstic.register_bluedroid_descriptors()?;
-
         characterstic
     }
 
-    fn register_bluedroid_descriptors(&self) -> anyhow::Result<()> {
+    pub fn register_bluedroid(&self, service: &Arc<ServiceInner>) -> anyhow::Result<()> {
+        *self
+            .0
+            .service
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Service"))? = Arc::downgrade(service);
+
+        self.register_characteristic()?;
+
+        Ok(())
+    }
+
+    fn register_descriptors(&self) -> anyhow::Result<()> {
         let service = self.0.get_service()?;
         let app = service.get_app()?;
         let gatts = app.get_gatts()?;
@@ -195,26 +204,10 @@ where
                 "Service handle is None, likely Service was not initialized properly"
             ))?;
 
-        if self.0.config.notifiable || self.0.config.indicateable {
-            gatts.gatts.add_descriptor(
-                service_handle,
-                &GattDescriptor {
-                    uuid: BtUuid::uuid128(0x2902),
-                    permissions: enum_set!(Permission::Read | Permission::Write),
-                },
-            )?;
-        }
-
         Ok(())
     }
 
-    pub fn register_bluedroid(&self, service: &Arc<ServiceInner>) -> anyhow::Result<()> {
-        *self
-            .0
-            .service
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Service"))? = Arc::downgrade(service);
-
+    fn register_characteristic(&self) -> anyhow::Result<()> {
         let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::CharacteristicAdded {
             status: GattStatus::Busy,
