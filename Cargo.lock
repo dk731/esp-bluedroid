@@ -622,8 +622,11 @@ name = "esp-bluedroid"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+<<<<<<< HEAD
  "bincode",
  "crossbeam-channel",
+=======
+>>>>>>> 3f16bc07cb88de0e0153b806fb79d81afe2aa196
  "embuild",
  "enumset",
  "esp-idf-svc",
