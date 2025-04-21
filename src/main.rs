@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use esp_bluedroid::{
     ble,
     gatts::{
@@ -107,17 +109,14 @@ fn run_ble_example() -> anyhow::Result<()> {
             broadcasted: true,
             enable_notify: true,
         },
-        Some(vec![
-            Descriptor::new(
-                Qwe(0x25),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(123),
-                    readable: true,
-                    writable: true,
-                },
-            )
-            .0,
-        ]),
+        Some(vec![Arc::new(Descriptor::new(
+            Qwe(0x25),
+            DescriptorConfig {
+                uuid: BtUuid::uuid128(123),
+                readable: true,
+                writable: true,
+            },
+        ))]),
     ))?;
 
     let thread_char = char1.clone();

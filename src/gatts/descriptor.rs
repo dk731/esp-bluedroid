@@ -12,8 +12,9 @@ use esp_idf_svc::bt::{
 
 use super::{
     attribute::{AnyAttribute, Attribute, AttributeInner},
-    characteristic::CharacteristicInner,
+    characteristic::{self, CharacteristicInner},
     event::{GattsEvent, GattsEventMessage},
+    service,
 };
 
 pub struct DescriptorConfig {
@@ -55,7 +56,6 @@ pub trait DescriptorAttribute<T: Attribute>: Send + Sync + 'static {
     fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()>;
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn register(&self, service: &Arc<CharacteristicInner<T>>) -> anyhow::Result<()>;
-    fn register_global(&self) -> anyhow::Result<()>;
     fn uuid(&self) -> BtUuid;
     fn handle(&self) -> anyhow::Result<Handle>;
 }
@@ -82,6 +82,24 @@ impl<T: Attribute, A: Attribute> Descriptor<T, A> {
     }
 }
 
+impl<T: Attribute, A: Attribute> DescriptorInner<T, A> {
+    fn get_characteristic(&self) -> anyhow::Result<Arc<CharacteristicInner<A>>> {
+        self.characteristic
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read characteristic"))?
+            .upgrade()
+            .ok_or(anyhow::anyhow!("Failed to upgrade characteristic"))
+    }
+
+    fn handle(&self) -> anyhow::Result<Handle> {
+        self.attribute
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read attribute"))?
+            .ok_or_else(|| anyhow::anyhow!("Attribute handle not set"))
+    }
+}
+
 impl<T: Attribute, A: Attribute> AnyAttribute for DescriptorInner<T, A> {
     fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
         self.attribute.update(Arc::new(T::from_bytes(bytes)?))
@@ -92,17 +110,18 @@ impl<T: Attribute, A: Attribute> AnyAttribute for DescriptorInner<T, A> {
     }
 }
 
-impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for DescriptorInner<T, A> {
+impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for Descriptor<T, A> {
     fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
-        self.attribute.update(Arc::new(T::from_bytes(bytes)?))
+        self.0.attribute.update(Arc::new(T::from_bytes(bytes)?))
     }
 
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        self.attribute.get_bytes()
+        self.0.attribute.get_bytes()
     }
 
     fn handle(&self) -> anyhow::Result<Handle> {
-        self.attribute
+        self.0
+            .attribute
             .handle
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read attribute"))?
@@ -111,6 +130,7 @@ impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for DescriptorInner<T, A
 
     fn register(&self, characteristic: &Arc<CharacteristicInner<A>>) -> anyhow::Result<()> {
         *self
+            .0
             .characteristic
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Service"))? =
@@ -137,11 +157,11 @@ impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for DescriptorInner<T, A
 
         gatts
             .gatts
-            .add_descriptor(parent_service_handle, &(&self.config).into())
+            .add_descriptor(parent_service_handle, &(&self.0.config).into())
             .map_err(|err| {
                 anyhow::anyhow!(
                     "Failed to register GATT descriptor {:?}: {:?}",
-                    self.config.uuid,
+                    self.0.config.uuid,
                     err
                 )
             })?;
@@ -170,7 +190,7 @@ impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for DescriptorInner<T, A
                     ));
                 }
 
-                if self.config.uuid != descr_uuid {
+                if self.0.config.uuid != descr_uuid {
                     return Err(anyhow::anyhow!(
                         "Received unexpected GATT descriptor uuid: {:?}",
                         descr_uuid
@@ -181,16 +201,34 @@ impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for DescriptorInner<T, A
                     return Err(anyhow::anyhow!("Failed to register: {:?}", status));
                 }
 
-                self.attribute.set_handle(attr_handle)?;
+                self.0.attribute.set_handle(attr_handle)?;
             }
             Ok(_) => return Err(anyhow::anyhow!("Received unexpected GATT event")),
             Err(_) => return Err(anyhow::anyhow!("Timed out waiting for GATT event")),
+        }
+
+        let characteristic = self.0.get_characteristic()?;
+        let service = characteristic.get_service()?;
+        let app = service.get_app()?;
+        let gatts = app.get_gatts()?;
+
+        if gatts
+            .attributes
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write GATT attributes"))?
+            .insert(self.handle()?, self.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!(
+                "Failed to register GATT descriptor {:?}: already exists",
+                self.0.config.uuid
+            ));
         }
 
         Ok(())
     }
 
     fn uuid(&self) -> BtUuid {
-        self.config.uuid.clone()
+        self.0.config.uuid.clone()
     }
 }
