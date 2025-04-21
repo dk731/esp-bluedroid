@@ -95,7 +95,7 @@ impl<T: Attribute> Clone for Characteristic<T> {
 pub struct CharacteristicInner<T: Attribute> {
     pub service: RwLock<Weak<ServiceInner>>,
     pub config: CharacteristicConfig,
-    descriptors: HashMap<DescritporId, Arc<dyn CharacteristicAttribute>>,
+    descriptors: HashMap<DescritporId, Arc<dyn DescriptorAttribute<T>>>,
 
     pub attribute: AttributeInner<T>,
 }
@@ -104,13 +104,24 @@ impl<T: Attribute> Characteristic<T> {
     pub fn new(
         value: T,
         config: CharacteristicConfig,
-        descriptors: Option<Vec<&dyn DescriptorAttribute>>,
+        descriptors: Option<Vec<Arc<dyn DescriptorAttribute<T>>>>,
     ) -> Self {
         let characterstic = CharacteristicInner {
             service: RwLock::new(Weak::new()),
             config,
             attribute: AttributeInner::new(value),
-            descriptors: Default::default(),
+            descriptors: match descriptors {
+                Some(descriptors) => descriptors
+                    .into_iter()
+                    .map(|descriptor| {
+                        let descriptor = descriptor.clone();
+
+                        let id: DescritporId = DescritporId(descriptor.uuid());
+                        (id, descriptor)
+                    })
+                    .collect(),
+                None => HashMap::new(),
+            },
         };
 
         let characterstic = Self(Arc::new(characterstic));
@@ -126,24 +137,9 @@ impl<T: Attribute> Characteristic<T> {
             .map_err(|_| anyhow::anyhow!("Failed to write Service"))? = Arc::downgrade(service);
 
         self.register_characteristic()?;
-
-        Ok(())
-    }
-
-    fn register_descriptors(&self) -> anyhow::Result<()> {
-        let service = self.0.get_service()?;
-        let app = service.get_app()?;
-        let gatts = app.get_gatts()?;
-
-        let service_handle = service
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Service handle is None, likely Service was not initialized properly"
-            ))?;
-
-        // gatts.gatts.add_descriptor(service_handle, descriptor)
+        for descriptor in self.0.descriptors.values() {
+            descriptor.register(&self.0)?;
+        }
 
         Ok(())
     }
@@ -160,7 +156,8 @@ impl<T: Attribute> Characteristic<T> {
         let service = self.0.get_service()?;
         let app = service.get_app()?;
         let gatts = app.get_gatts()?;
-        let service_handle = service.handle()?;
+        let gatts_interface = app.interface()?;
+        let service_handle = service.get_handle()?;
 
         gatts
             .gatts_events
@@ -181,7 +178,7 @@ impl<T: Attribute> Characteristic<T> {
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
-                _,
+                interface,
                 GattsEvent::CharacteristicAdded {
                     status,
                     attr_handle,
@@ -189,6 +186,13 @@ impl<T: Attribute> Characteristic<T> {
                     char_uuid,
                 },
             )) => {
+                if interface != gatts_interface {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT interface: {:?}",
+                        interface
+                    ));
+                }
+
                 if char_uuid != self.0.config.uuid {
                     return Err(anyhow::anyhow!(
                         "Received unexpected GATT characteristic UUID: {:?}",
@@ -229,7 +233,7 @@ impl<T: Attribute> Characteristic<T> {
 }
 
 impl<T: Attribute> CharacteristicInner<T> {
-    fn get_service(&self) -> anyhow::Result<Arc<ServiceInner>> {
+    pub fn get_service(&self) -> anyhow::Result<Arc<ServiceInner>> {
         self.service
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Service"))?

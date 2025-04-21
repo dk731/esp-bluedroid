@@ -50,9 +50,7 @@ impl Service {
             characteristics: Default::default(),
         };
 
-        let service = Self(Arc::new(service));
-
-        service
+        Self(Arc::new(service))
     }
 
     pub fn register_bluedroid(&self, app: &Arc<AppInner>) -> anyhow::Result<()> {
@@ -93,13 +91,20 @@ impl Service {
 
         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(GattsEventMessage(
-                _,
+                interface,
                 GattsEvent::ServiceCreated {
                     status,
                     service_handle,
                     service_id,
                 },
             )) => {
+                if interface != gatt_interface {
+                    return Err(anyhow::anyhow!(
+                        "Received unexpected GATT interface: {:?}",
+                        interface
+                    ));
+                }
+
                 if service_id != self.0.id.0 {
                     return Err(anyhow::anyhow!(
                         "Received unexpected GATT service id: {:?}",
@@ -172,7 +177,7 @@ impl Service {
 
         let app = self.0.get_app()?;
         let gatts = app.get_gatts()?;
-        let handle = self.0.handle()?;
+        let handle = self.0.get_handle()?;
 
         gatts
             .gatts_events
@@ -218,7 +223,7 @@ impl Service {
         });
         let app = self.0.get_app()?;
         let gatts = app.get_gatts()?;
-        let handle = self.0.handle()?;
+        let handle = self.0.get_handle()?;
 
         gatts
             .gatts_events
@@ -266,7 +271,7 @@ impl ServiceInner {
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
     }
 
-    pub fn handle(&self) -> anyhow::Result<Handle> {
+    pub fn get_handle(&self) -> anyhow::Result<Handle> {
         self.handle
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?

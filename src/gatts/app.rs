@@ -38,9 +38,7 @@ impl App {
             connections: Default::default(),
         };
 
-        let app = Self(Arc::new(app));
-
-        app
+        Self(Arc::new(app))
     }
 
     pub fn register_bluedroid(&self, gatts: &Arc<GattsInner>) -> anyhow::Result<()> {
