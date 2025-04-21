@@ -33,6 +33,8 @@ pub struct CharacteristicConfig {
     // If any of this are true, Characteristic will automatically configure
     // CCCD descriptor
     pub enable_notify: bool,
+
+    pub description: Option<String>,
 }
 
 impl Into<GattCharacteristic> for &CharacteristicConfig {

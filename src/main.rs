@@ -4,7 +4,10 @@ use esp_bluedroid::{
     ble,
     gatts::{
         app::App,
-        attribute::{Attribute, AttributeUpdate, SerializableAttribute},
+        attribute::{
+            defaults::{U16Attr, U32Attr},
+            Attribute, AttributeUpdate, SerializableAttribute,
+        },
         characteristic::{Characteristic, CharacteristicConfig},
         descriptor::{Descriptor, DescriptorConfig},
         service::Service,
@@ -43,25 +46,6 @@ fn main() {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Qwe(u8);
-impl Attribute for Qwe {
-    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        Ok(vec![self.0])
-    }
-
-    fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self>
-    where
-        Self: Sized,
-    {
-        if bytes.len() != 1 {
-            return Err(anyhow::anyhow!("Invalid length for Qwe attribute"));
-        }
-        let value = bytes[0];
-        Ok(Qwe(value))
-    }
-}
-
 fn run_ble_example() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
     let ble = ble::Ble::new(peripherals.modem)?;
@@ -79,7 +63,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     ))?;
 
     let char1 = service.register_characteristic(&Characteristic::new(
-        Qwe(123),
+        U16Attr(0),
         CharacteristicConfig {
             uuid: BtUuid::uuid128(2),
             value_max_len: 100,
@@ -87,6 +71,7 @@ fn run_ble_example() -> anyhow::Result<()> {
             writable: true,
             broadcasted: true,
             enable_notify: true,
+            description: Some("Test characteristic".to_string()),
         },
         None,
     ))?;
@@ -108,9 +93,10 @@ fn run_ble_example() -> anyhow::Result<()> {
             writable: true,
             broadcasted: true,
             enable_notify: true,
+            description: Some("Complex characteristic of CoolNestedChar struct".to_string()),
         },
         Some(vec![Arc::new(Descriptor::new(
-            Qwe(0x25),
+            U32Attr(0),
             DescriptorConfig {
                 uuid: BtUuid::uuid128(123),
                 readable: true,
@@ -133,7 +119,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        char1.update_value(Qwe(i))?;
+        char1.update_value(U16Attr(i))?;
         i += 1;
     }
 
