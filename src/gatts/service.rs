@@ -155,14 +155,30 @@ impl Service {
             ));
         }
 
-        if gatts
+        let global_attributes = gatts
             .attributes
             .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatt attributes"))?
+            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?;
+
+        if global_attributes
             .insert(characteristic_handle, characteristic.0.clone())
             .is_some()
         {
             return Err(anyhow::anyhow!("Failed to write Gatt attributes"));
+        }
+
+        for descriptor in characteristic.0.descriptors {
+            let descriptor_handle = descriptor.1.handle()?;
+
+            if global_attributes
+                .insert(descriptor_handle, descriptor.1.clone())
+                .is_some()
+            {
+                return Err(anyhow::anyhow!(
+                    "Descriptor with handle {:?} already exists",
+                    descriptor_handle
+                ));
+            }
         }
 
         Ok(characteristic.clone())

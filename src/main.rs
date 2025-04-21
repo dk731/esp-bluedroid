@@ -4,6 +4,7 @@ use esp_bluedroid::{
         app::App,
         attribute::{Attribute, AttributeUpdate, SerializableAttribute},
         characteristic::{Characteristic, CharacteristicConfig},
+        descriptor::{Descriptor, DescriptorConfig},
         service::Service,
     },
 };
@@ -106,7 +107,17 @@ fn run_ble_example() -> anyhow::Result<()> {
             broadcasted: true,
             enable_notify: true,
         },
-        None,
+        Some(vec![
+            Descriptor::new(
+                Qwe(0x25),
+                DescriptorConfig {
+                    uuid: BtUuid::uuid128(123),
+                    readable: true,
+                    writable: true,
+                },
+            )
+            .0,
+        ]),
     ))?;
 
     let thread_char = char1.clone();

@@ -6,19 +6,18 @@ use std::{
 use crossbeam_channel::bounded;
 use enumset::EnumSet;
 use esp_idf_svc::bt::{
-    ble::gatt::{GattDescriptor, GattStatus, Permission},
+    ble::gatt::{GattDescriptor, GattStatus, Handle, Permission},
     BtUuid,
 };
 
 use super::{
-    attribute::{Attribute, AttributeInner},
-    characteristic::{self, Characteristic, CharacteristicInner},
+    attribute::{AnyAttribute, Attribute, AttributeInner},
+    characteristic::CharacteristicInner,
     event::{GattsEvent, GattsEventMessage},
 };
 
 pub struct DescriptorConfig {
     pub uuid: BtUuid,
-    pub value_max_len: usize,
 
     pub readable: bool,
     pub writable: bool,
@@ -52,11 +51,12 @@ impl std::hash::Hash for DescritporId {
     }
 }
 
-pub trait DescriptorAttribute<A: Attribute>: Send + Sync + 'static {
+pub trait DescriptorAttribute<T: Attribute>: Send + Sync + 'static {
     fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()>;
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>>;
-    fn register(&self, service: &Arc<CharacteristicInner<A>>) -> anyhow::Result<()>;
+    fn register(&self, service: &Arc<CharacteristicInner<T>>) -> anyhow::Result<()>;
     fn uuid(&self) -> BtUuid;
+    fn handle(&self) -> anyhow::Result<Handle>;
 }
 
 #[derive(Clone)]
@@ -79,15 +79,15 @@ impl<T: Attribute, A: Attribute> Descriptor<T, A> {
 
         Self(Arc::new(descriptor))
     }
+}
 
-    pub fn register(&self, service: &Arc<CharacteristicInner<A>>) -> anyhow::Result<()> {
-        *self
-            .0
-            .characteristic
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Service"))? = Arc::downgrade(service);
+impl<T: Attribute> AnyAttribute for dyn DescriptorAttribute<T> {
+    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.update_from_bytes(bytes)
+    }
 
-        Ok(())
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        self.get_bytes()
     }
 }
 
@@ -98,6 +98,14 @@ impl<T: Attribute, A: Attribute> DescriptorAttribute<A> for DescriptorInner<T, A
 
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
         self.attribute.get_bytes()
+    }
+
+    fn handle(&self) -> anyhow::Result<Handle> {
+        self.attribute
+            .handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read attribute"))?
+            .ok_or_else(|| anyhow::anyhow!("Attribute handle not set"))
     }
 
     fn register(&self, characteristic: &Arc<CharacteristicInner<A>>) -> anyhow::Result<()> {

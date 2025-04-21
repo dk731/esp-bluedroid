@@ -95,7 +95,7 @@ impl<T: Attribute> Clone for Characteristic<T> {
 pub struct CharacteristicInner<T: Attribute> {
     pub service: RwLock<Weak<ServiceInner>>,
     pub config: CharacteristicConfig,
-    descriptors: HashMap<DescritporId, Arc<dyn DescriptorAttribute<T>>>,
+    pub descriptors: HashMap<DescritporId, Arc<dyn DescriptorAttribute<T>>>,
 
     pub attribute: AttributeInner<T>,
 }
