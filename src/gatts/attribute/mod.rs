@@ -75,33 +75,6 @@ impl<T: Attribute> AttributeInner<T> {
         }
     }
 
-    pub fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        self.value
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read attribute"))?
-            .get_bytes()
-    }
-
-    pub fn update(&self, new_value: Arc<T>) -> anyhow::Result<()> {
-        let mut value = self
-            .value
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write attribute"))?;
-        let old_value = value.clone();
-
-        *value = new_value;
-        let new_value = value.clone();
-
-        self.updates_tx
-            .send(AttributeUpdate {
-                old: old_value,
-                new: new_value,
-            })
-            .map_err(|_| anyhow::anyhow!("Failed to send attribute update"))?;
-
-        Ok(())
-    }
-
     pub fn get_value(&self) -> anyhow::Result<Arc<T>> {
         Ok(self
             .value
@@ -124,5 +97,26 @@ impl<T: Attribute> AttributeInner<T> {
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read attribute handle"))?
             .ok_or_else(|| anyhow::anyhow!("Attribute handle is not set"))
+    }
+
+    pub fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        self.get_value()?.get_bytes()
+    }
+
+    pub fn update(&self, new_value: Arc<T>) -> anyhow::Result<()> {
+        let old_value = self.get_value()?;
+        *self
+            .value
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write attribute value"))? = new_value.clone();
+
+        self.updates_tx
+            .send(AttributeUpdate {
+                old: old_value,
+                new: new_value,
+            })
+            .map_err(|_| anyhow::anyhow!("Failed to send attribute update"))?;
+
+        Ok(())
     }
 }

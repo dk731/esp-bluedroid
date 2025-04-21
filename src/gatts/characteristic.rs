@@ -12,8 +12,11 @@ use esp_idf_svc::bt::{
 };
 
 use super::{
-    attribute::{AnyAttribute, Attribute, AttributeInner},
-    descriptor::{DescriptorAttribute, DescritporId},
+    attribute::{
+        defaults::{StringAttr, U16Attr},
+        AnyAttribute, Attribute, AttributeInner,
+    },
+    descriptor::{Descriptor, DescriptorAttribute, DescriptorConfig, DescritporId},
     event::GattsEventMessage,
     service::{self, ServiceInner},
     GattsEvent,
@@ -141,7 +144,56 @@ impl<T: Attribute> Characteristic<T> {
         self.register_characteristic()?;
         self.register_in_global()?;
 
-        for descriptor in self.0.descriptors.values() {
+        let mut descriptors_to_register: HashMap<DescritporId, Arc<dyn DescriptorAttribute<T>>> =
+            HashMap::new();
+
+        // Client Characteristic Configuration Descriptor (CCCD)
+        if self.0.config.enable_notify {
+            let descriptor = Descriptor::<U16Attr, T>::new(
+                U16Attr(0),
+                DescriptorConfig {
+                    uuid: BtUuid::uuid16(0x2902),
+                    readable: true,
+                    writable: true,
+                },
+            );
+
+            descriptors_to_register.insert(DescritporId(descriptor.uuid()), Arc::new(descriptor));
+        }
+
+        // Server Characteristic Configuration Descriptor (SCCD)
+        if self.0.config.broadcasted {
+            let descriptor = Descriptor::<U16Attr, T>::new(
+                U16Attr(0x0001),
+                DescriptorConfig {
+                    uuid: BtUuid::uuid16(0x2903),
+                    readable: true,
+                    writable: true,
+                },
+            );
+
+            descriptors_to_register.insert(DescritporId(descriptor.uuid()), Arc::new(descriptor));
+        }
+
+        // Characteristic User Description Descriptor
+        if let Some(description) = &self.0.config.description {
+            let descriptor = Descriptor::<StringAttr, T>::new(
+                StringAttr(description.clone()),
+                DescriptorConfig {
+                    uuid: BtUuid::uuid16(0x2901),
+                    readable: true,
+                    writable: false,
+                },
+            );
+
+            descriptors_to_register.insert(DescritporId(descriptor.uuid()), Arc::new(descriptor));
+        }
+
+        self.0.descriptors.iter().for_each(|(_, descriptor)| {
+            descriptors_to_register.insert(DescritporId(descriptor.uuid()), descriptor.clone());
+        });
+
+        for descriptor in descriptors_to_register.values() {
             descriptor.register(&self.0)?;
         }
 
@@ -251,7 +303,7 @@ impl<T: Attribute> Characteristic<T> {
     }
 
     pub fn update_value(&self, value: T) -> anyhow::Result<()> {
-        self.0.attribute.update(Arc::new(value))
+        AnyAttribute::update_from_bytes(&*self.0, &value.get_bytes()?)
     }
 }
 

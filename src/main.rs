@@ -59,7 +59,7 @@ fn run_ble_example() -> anyhow::Result<()> {
             },
             is_primary: true,
         },
-        10,
+        15,
     ))?;
 
     let char1 = service.register_characteristic(&Characteristic::new(
@@ -72,28 +72,6 @@ fn run_ble_example() -> anyhow::Result<()> {
             broadcasted: true,
             enable_notify: true,
             description: Some("Test characteristic".to_string()),
-        },
-        None,
-    ))?;
-
-    let char2 = service.register_characteristic(&Characteristic::new(
-        CoolNestedChar {
-            bar: "bar".to_string(),
-            foo_bar: FooBar {
-                bar: "bar".to_string(),
-                foo_bar: "foo_bar".to_string(),
-            },
-            temperature: 0,
-            messages: vec!["Hello".to_string(), "World".to_string()],
-        },
-        CharacteristicConfig {
-            uuid: BtUuid::uuid128(3),
-            value_max_len: 100,
-            readable: true,
-            writable: true,
-            broadcasted: true,
-            enable_notify: true,
-            description: Some("Complex characteristic of CoolNestedChar struct".to_string()),
         },
         Some(vec![Arc::new(Descriptor::new(
             U32Attr(0),
