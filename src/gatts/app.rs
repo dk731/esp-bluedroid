@@ -89,7 +89,7 @@ impl App {
         }
     }
 
-    pub fn register_service(&self, service: Service) -> anyhow::Result<Service> {
+    pub fn register_service(&self, service: &Service) -> anyhow::Result<Service> {
         service.register_bluedroid(&self.0)?;
 
         if self
@@ -106,7 +106,7 @@ impl App {
             ));
         }
 
-        Ok(service)
+        Ok(service.clone())
     }
 }
 

@@ -13,7 +13,8 @@ use std::{
 };
 
 use app::{App, AppInner};
-use attribute::{AnyAttribute, Attribute};
+
+use attribute::AnyAttribute;
 use crossbeam_channel::bounded;
 use esp_idf_svc::{
     bt::{
@@ -189,7 +190,7 @@ impl Gatts {
         Ok(())
     }
 
-    pub fn register_app(&self, app: App) -> anyhow::Result<App> {
+    pub fn register_app(&self, app: &App) -> anyhow::Result<App> {
         app.register_bluedroid(&self.0)?;
         let interface = app.0.interface()?;
 
@@ -207,7 +208,7 @@ impl Gatts {
             ));
         }
 
-        Ok(app)
+        Ok(app.clone())
     }
 }
 

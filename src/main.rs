@@ -63,8 +63,8 @@ fn run_ble_example() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
     let ble = ble::Ble::new(peripherals.modem)?;
 
-    let app = ble.gatts.register_app(App::new(0))?;
-    let service = app.register_service(Service::new(
+    let app = ble.gatts.register_app(&App::new(0))?;
+    let service = app.register_service(&Service::new(
         GattServiceId {
             id: GattId {
                 uuid: BtUuid::uuid128(1),
@@ -75,7 +75,8 @@ fn run_ble_example() -> anyhow::Result<()> {
         10,
     ))?;
 
-    let char1 = service.register_characteristic(Characteristic::new(
+    let char1 = service.register_characteristic(&Characteristic::new(
+        Qwe(123),
         CharacteristicConfig {
             uuid: BtUuid::uuid128(2),
             value_max_len: 100,
@@ -84,18 +85,10 @@ fn run_ble_example() -> anyhow::Result<()> {
             broadcasted: true,
             enable_notify: true,
         },
-        Qwe(123),
+        None,
     ))?;
 
-    let char2 = service.register_characteristic(Characteristic::new(
-        CharacteristicConfig {
-            uuid: BtUuid::uuid128(3),
-            value_max_len: 100,
-            readable: true,
-            writable: true,
-            broadcasted: true,
-            enable_notify: true,
-        },
+    let char2 = service.register_characteristic(&Characteristic::new(
         CoolNestedChar {
             bar: "bar".to_string(),
             foo_bar: FooBar {
@@ -105,6 +98,15 @@ fn run_ble_example() -> anyhow::Result<()> {
             temperature: 0,
             messages: vec!["Hello".to_string(), "World".to_string()],
         },
+        CharacteristicConfig {
+            uuid: BtUuid::uuid128(3),
+            value_max_len: 100,
+            readable: true,
+            writable: true,
+            broadcasted: true,
+            enable_notify: true,
+        },
+        None,
     ))?;
 
     let thread_char = char1.clone();

@@ -13,8 +13,8 @@ use esp_idf_svc::bt::{
 
 use super::{
     app::AppInner,
-    attribute::{AnyAttribute, Attribute},
-    characteristic::Characteristic,
+    attribute::Attribute,
+    characteristic::{Characteristic, CharacteristicAttribute},
     GattsEvent, GattsEventMessage,
 };
 
@@ -28,6 +28,7 @@ impl std::hash::Hash for ServiceId {
     }
 }
 
+#[derive(Clone)]
 pub struct Service(pub Arc<ServiceInner>);
 
 pub struct ServiceInner {
@@ -35,7 +36,7 @@ pub struct ServiceInner {
     pub id: ServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
+    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn CharacteristicAttribute>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
@@ -128,7 +129,7 @@ impl Service {
 
     pub fn register_characteristic<T: Attribute>(
         &self,
-        characteristic: Characteristic<T>,
+        characteristic: &Characteristic<T>,
     ) -> anyhow::Result<Characteristic<T>> {
         characteristic.register_bluedroid(&self.0)?;
         let characteristic_handle = characteristic.0.handle()?;
@@ -159,7 +160,7 @@ impl Service {
             return Err(anyhow::anyhow!("Failed to write Gatt attributes"));
         }
 
-        Ok(characteristic)
+        Ok(characteristic.clone())
     }
 
     pub fn start(&self) -> anyhow::Result<()> {

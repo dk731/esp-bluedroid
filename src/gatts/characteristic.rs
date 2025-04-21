@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     mem::discriminant,
     sync::{Arc, RwLock, Weak},
 };
@@ -12,6 +13,7 @@ use esp_idf_svc::bt::{
 
 use super::{
     attribute::{AnyAttribute, Attribute, AttributeInner},
+    descriptor::{DescriptorAttribute, DescritporId},
     event::GattsEventMessage,
     service::ServiceInner,
     GattsEvent,
@@ -78,28 +80,40 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-#[derive(Clone)]
-pub struct Characteristic<T: Attribute>(
-    pub Arc<CharacteristicInner<T>>,
-    std::marker::PhantomData<T>,
-);
+pub trait CharacteristicAttribute: Send + Sync + 'static {
+    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()>;
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>>;
+}
+
+pub struct Characteristic<T: Attribute>(pub Arc<CharacteristicInner<T>>);
+impl<T: Attribute> Clone for Characteristic<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 pub struct CharacteristicInner<T: Attribute> {
     pub service: RwLock<Weak<ServiceInner>>,
     pub config: CharacteristicConfig,
+    descriptors: HashMap<DescritporId, Arc<dyn CharacteristicAttribute>>,
 
     pub attribute: AttributeInner<T>,
 }
 
 impl<T: Attribute> Characteristic<T> {
-    pub fn new(config: CharacteristicConfig, value: T) -> Self {
+    pub fn new(
+        value: T,
+        config: CharacteristicConfig,
+        descriptors: Option<Vec<&dyn DescriptorAttribute>>,
+    ) -> Self {
         let characterstic = CharacteristicInner {
             service: RwLock::new(Weak::new()),
             config,
             attribute: AttributeInner::new(value),
+            descriptors: Default::default(),
         };
 
-        let characterstic = Self(Arc::new(characterstic), std::marker::PhantomData);
+        let characterstic = Self(Arc::new(characterstic));
 
         characterstic
     }
@@ -225,6 +239,16 @@ impl<T: Attribute> CharacteristicInner<T> {
 
     pub fn handle(&self) -> anyhow::Result<Handle> {
         self.attribute.handle()
+    }
+}
+
+impl<T: Attribute> CharacteristicAttribute for CharacteristicInner<T> {
+    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.attribute.update(Arc::new(T::from_bytes(bytes)?))
+    }
+
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        self.attribute.get_bytes()
     }
 }
 

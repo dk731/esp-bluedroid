@@ -627,7 +627,6 @@ dependencies = [
  "embuild",
  "enumset",
  "esp-idf-svc",
- "heapless",
  "log",
  "serde",
 ]
