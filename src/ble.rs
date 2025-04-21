@@ -22,8 +22,8 @@ impl Ble {
         let nvs = EspDefaultNvsPartition::take()?;
         let bt = Arc::new(BtDriver::<svc::bt::Ble>::new(modem, Some(nvs.clone()))?);
 
-        let gap = Gap::new(bt.clone())?;
         let gatts = Gatts::new(bt.clone())?;
+        let gap = Gap::new(bt.clone(), &gatts.0)?;
 
         let ble = Ble {
             _bt: bt,

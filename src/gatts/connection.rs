@@ -3,6 +3,7 @@ use esp_idf_svc::bt::{
     BdAddr,
 };
 
+#[derive(Debug, Clone)]
 pub enum ConnectionStatus {
     Connected(ConnectionInner),
     Disconnected(ConnectionInner),

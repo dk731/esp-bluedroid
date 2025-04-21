@@ -48,12 +48,17 @@ pub struct GattsInner {
     pub connections_rx: Receiver<ConnectionStatus>,
     connections_tx: Sender<ConnectionStatus>,
 
+    pub gap_connections_rx: Receiver<ConnectionStatus>,
+    gap_connections_tx: Sender<ConnectionStatus>,
+
     gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, Sender<GattsEventMessage>>>>,
 }
 
 impl Gatts {
     pub fn new(bt: ExtBtDriver) -> anyhow::Result<Self> {
         let (connections_tx, connections_rx) = bounded(1);
+        let (gap_connections_tx, gap_connections_rx) = bounded(1);
+
         let gatts = EspGatts::new(bt)?;
         let gatts_inner = GattsInner {
             gatts,
@@ -63,6 +68,8 @@ impl Gatts {
             attributes: Default::default(),
             connections_rx,
             connections_tx,
+            gap_connections_rx,
+            gap_connections_tx,
         };
 
         let gatts = Self(Arc::new(gatts_inner));
@@ -491,8 +498,10 @@ impl GattsInner {
                     })?
                     .insert(conn_id, connection.clone());
 
-                self.connections_tx
-                    .send(ConnectionStatus::Connected(connection))?;
+                let connection_status = ConnectionStatus::Connected(connection);
+
+                self.gap_connections_tx.send(connection_status.clone())?;
+                self.connections_tx.send(connection_status)?;
 
                 Ok(())
             }
