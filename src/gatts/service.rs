@@ -53,6 +53,10 @@ impl Service {
         Self(Arc::new(service))
     }
 
+    pub fn uuid(&self) -> BtUuid {
+        self.0.id.0.id.uuid.clone()
+    }
+
     pub fn register_bluedroid(&self, app: &Arc<AppInner>) -> anyhow::Result<()> {
         *self
             .0

@@ -9,7 +9,10 @@ use std::{
 
 use crossbeam_channel::{bounded, Sender};
 use esp_idf_svc::{
-    bt::{ble::gap::EspBleGap, BtStatus},
+    bt::{
+        ble::gap::{AdvConfiguration, AppearanceCategory, EspBleGap},
+        BtStatus, BtUuid,
+    },
     hal::task::thread,
 };
 use event::GapEvent;
@@ -22,9 +25,19 @@ use esp_idf_svc as svc;
 
 #[derive(Debug, Clone)]
 pub struct GapConfig {
-    pub name: String,
-    pub appearance: u16,
-    pub device_id: u8,
+    pub device_name: String,
+
+    pub include_name_in_advertising: bool,
+    pub include_txpower_in_advertising: bool,
+
+    pub preffered_min_interval: i32,
+    pub preffered_max_interval: i32,
+
+    pub appearance: AppearanceCategory,
+    pub manufacturer_data: Option<Vec<u8>>,
+
+    pub service_data: Option<Vec<u8>>,
+    pub service_uuid: Option<BtUuid>,
 
     // Maximum number of connections for auto advertising
     // if Some passed, Gap will automatically start advertising if connections < max_connections
@@ -34,10 +47,33 @@ pub struct GapConfig {
 impl Default for GapConfig {
     fn default() -> Self {
         Self {
-            name: "ESP32".to_string(),
-            appearance: 0,
-            device_id: 0,
+            device_name: String::from("ESP32"),
+            include_name_in_advertising: true,
+            include_txpower_in_advertising: true,
+            preffered_min_interval: 0,
+            preffered_max_interval: 0,
+            appearance: AppearanceCategory::Unknown,
+            manufacturer_data: None,
+            service_data: None,
+            service_uuid: None,
             max_connections: Some(1),
+        }
+    }
+}
+
+impl<'a> Into<AdvConfiguration<'a>> for &'a GapConfig {
+    fn into(self) -> AdvConfiguration<'a> {
+        AdvConfiguration {
+            set_scan_rsp: false,
+            include_name: self.include_name_in_advertising,
+            include_txpower: self.include_txpower_in_advertising,
+            min_interval: self.preffered_min_interval,
+            max_interval: self.preffered_max_interval,
+            appearance: self.appearance,
+            flag: 0,
+            service_uuid: self.service_uuid.clone(),
+            service_data: self.service_data.as_ref().map(|data| data.as_slice()),
+            manufacturer_data: self.manufacturer_data.as_ref().map(|data| data.as_slice()),
         }
     }
 }
@@ -136,10 +172,34 @@ impl Gap {
     }
 
     fn apply_config(&self) -> anyhow::Result<()> {
+        self.0
+            .gap
+            .set_device_name(
+                self.0
+                    .config
+                    .read()
+                    .map_err(|err| {
+                        anyhow::anyhow!("Failed to acquire read lock for gap config: {:?}", err)
+                    })?
+                    .device_name
+                    .as_str(),
+            )
+            .map_err(|err| anyhow::anyhow!("Failed to set device name: {:?}", err))?;
+
+        self.0
+            .gap
+            .set_adv_conf(
+                &(&*self.0.config.read().map_err(|err| {
+                    anyhow::anyhow!("Failed to acquire read lock for gap config: {:?}", err)
+                })?)
+                    .into(),
+            )
+            .map_err(|err| anyhow::anyhow!("Failed to set advertising configuration: {:?}", err))?;
+
         Ok(())
     }
 
-    pub fn set_config(&mut self, config: GapConfig) -> anyhow::Result<()> {
+    pub fn set_config(&self, config: GapConfig) -> anyhow::Result<()> {
         *self.0.config.write().map_err(|err| {
             anyhow::anyhow!("Failed to acquire write lock for gap config: {:?}", err)
         })? = config;

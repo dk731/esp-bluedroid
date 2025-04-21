@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use esp_bluedroid::{
     ble,
+    gap::GapConfig,
     gatts::{
         app::App,
         attribute::{
@@ -15,7 +16,10 @@ use esp_bluedroid::{
 };
 use esp_idf_svc::{
     bt::{
-        ble::gatt::{GattId, GattServiceId},
+        ble::{
+            gap::AppearanceCategory,
+            gatt::{GattId, GattServiceId},
+        },
         BtUuid,
     },
     hal::prelude::Peripherals,
@@ -147,6 +151,15 @@ fn run_ble_example() -> anyhow::Result<()> {
     });
 
     service.start()?;
+    ble.gap.set_config(GapConfig {
+        device_name: "Supa Test Name Please Work".to_string(),
+        max_connections: Some(6),
+        service_uuid: Some(service.uuid()),
+        service_data: Some(vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]),
+        manufacturer_data: Some("Test Manufacturer".as_bytes().to_vec()),
+        appearance: AppearanceCategory::Computer,
+        ..GapConfig::default()
+    })?;
     ble.gap.start_advertising()?;
 
     let mut i = 0;
