@@ -14,7 +14,7 @@ use esp_idf_svc::bt::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    attribute::Attribute,
+    attribute::{Attribute, AttributeInner, AttributeUpdate, SerializableAttribute},
     event::GattsEventMessage,
     service::{Service, ServiceInner},
     GattsEvent,
@@ -33,8 +33,7 @@ pub struct CharacteristicConfig {
 
     // If any of this are true, Characteristic will automatically configure
     // CCCD descriptor
-    pub notifiable: bool,
-    pub indicateable: bool,
+    pub enable_notify: bool,
 }
 
 impl Into<GattCharacteristic> for &CharacteristicConfig {
@@ -56,11 +55,11 @@ impl Into<GattCharacteristic> for &CharacteristicConfig {
             properties.insert(Property::Broadcast);
         }
 
-        if self.notifiable {
+        if self.enable_notify {
             properties.insert(Property::Notify);
         }
 
-        if self.indicateable {
+        if self.enable_notify {
             properties.insert(Property::Indicate);
         }
 
@@ -82,99 +81,83 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-impl<T> Attribute for CharacteristicInner<T>
-where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
-{
-    fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        let value_lock = self
-            .value
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
+// impl Attribute for CharacteristicInner {
+//     fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
+//         let value_lock = self
+//             .value
+//             .read()
+//             .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
 
-        bincode::serde::encode_to_vec((**value_lock).clone(), bincode::config::standard()).map_err(
-            |err| {
-                anyhow::anyhow!(
-                    "Failed to serialize characteristic value to bytes: {:?}",
-                    err
-                )
-            },
-        )
-    }
+//         bincode::serde::encode_to_vec((**value_lock).clone(), bincode::config::standard()).map_err(
+//             |err| {
+//                 anyhow::anyhow!(
+//                     "Failed to serialize characteristic value to bytes: {:?}",
+//                     err
+//                 )
+//             },
+//         )
+//     }
 
-    fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
-        let (new_value, _): (T, usize) =
-            bincode::serde::decode_from_slice(data, bincode::config::standard()).map_err(
-                |err| {
-                    anyhow::anyhow!(
-                        "Failed to deserialize bytes to characteristic value: {:?}",
-                        err
-                    )
-                },
-            )?;
+//     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
+//         let (new_value, _): (T, usize) =
+//             bincode::serde::decode_from_slice(data, bincode::config::standard()).map_err(
+//                 |err| {
+//                     anyhow::anyhow!(
+//                         "Failed to deserialize bytes to characteristic value: {:?}",
+//                         err
+//                     )
+//                 },
+//             )?;
 
-        let mut current_value = self
-            .value
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
+//         let mut current_value = self
+//             .value
+//             .write()
+//             .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
 
-        let update = CharacteristicUpdate {
-            old: current_value.clone(),
-            new: Arc::new(new_value),
-        };
-        *current_value = update.new.clone();
+//         let update = CharacteristicUpdate {
+//             old: current_value.clone(),
+//             new: Arc::new(new_value),
+//         };
+//         *current_value = update.new.clone();
 
-        self.handle_value_update(update)?;
+//         self.handle_value_update(update)?;
 
-        Ok(())
-    }
-}
+//         Ok(())
+//     }
+// }
 
 #[derive(Clone)]
-pub struct Characteristic<T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static>(
+pub struct Characteristic<T: Attribute>(
     pub Arc<CharacteristicInner<T>>,
+    std::marker::PhantomData<T>,
 );
 
-#[derive(Clone)]
-pub struct CharacteristicUpdate<T>
-where
-    T: Clone,
-{
-    pub old: Arc<T>,
-    pub new: Arc<T>,
-}
-
-pub struct CharacteristicInner<T>
-where
-    T: Clone,
-{
+pub struct CharacteristicInner<T: Attribute> {
     pub service: RwLock<Weak<ServiceInner>>,
-    value: RwLock<Arc<T>>,
-
+    // value: RwLock<Arc<T>>,
     pub config: CharacteristicConfig,
     pub handle: RwLock<Option<Handle>>,
 
-    updates_tx: Sender<CharacteristicUpdate<T>>,
-    pub updates_rx: Receiver<CharacteristicUpdate<T>>,
+    attribute: RwLock<AttributeInner>,
+    _p: std::marker::PhantomData<T>,
+    // attribute: dyn TypedAttribute,
+    // updates_tx: Sender<CharacteristicUpdate<T>>,
+    // pub updates_rx: Receiver<CharacteristicUpdate<T>>,
 }
 
-impl<T> Characteristic<T>
-where
-    T: Serialize + for<'de> Deserialize<'de> + Clone + Sync + Send + 'static,
-{
+impl<T: Attribute> Characteristic<T> {
     pub fn new(config: CharacteristicConfig, value: T) -> Self {
-        let (tx, rx) = bounded(1);
-
         let characterstic = CharacteristicInner {
             service: RwLock::new(Weak::new()),
-            value: RwLock::new(Arc::new(value)),
             handle: RwLock::new(None),
             config,
-            updates_tx: tx.clone(),
-            updates_rx: rx.clone(),
+            // attribute: RwLock::new(AttributeInner::new(Arc::new(value))),
+            // value: RwLock::new(Arc::new(value)),
+            attribute: RwLock::new(todo!()),
+            _p: std::marker::PhantomData,
         };
 
-        let characterstic = Self(Arc::new(characterstic));
+        let characterstic = Self(Arc::new(characterstic), std::marker::PhantomData);
 
         characterstic
     }
@@ -204,6 +187,8 @@ where
                 "Service handle is None, likely Service was not initialized properly"
             ))?;
 
+        // gatts.gatts.add_descriptor(service_handle, descriptor)
+
         Ok(())
     }
 
@@ -216,6 +201,7 @@ where
             char_uuid: BtUuid::uuid16(0),
         });
 
+        // self.0.
         let service = self.0.get_service()?;
         let app = service.get_app()?;
         let gatts = app.get_gatts()?;
@@ -291,39 +277,45 @@ where
 
     // This locks internal value, so while lock is held, characteristic value cannot be changed
     pub fn value(&self) -> anyhow::Result<Arc<T>> {
-        Ok(self
-            .0
-            .value
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
-            .clone())
+        // Ok(self
+        //     .0
+        //     .value
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
+        //     .clone())
+
+        // let a = self
+        //     .0
+        //     .attribute
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic attribute value"))?;
+        // a.get_bytes()?;
+
+        todo!()
     }
 
     pub fn update_value(&self, value: T) -> anyhow::Result<()> {
-        let mut current_value = self
-            .0
-            .value
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
+        // let mut current_value = self
+        //     .0
+        //     .value
+        //     .write()
+        //     .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
 
-        let update = CharacteristicUpdate {
-            old: current_value.clone(),
-            new: Arc::new(value),
-        };
-        *current_value = update.new.clone();
+        // let update = AttributeUpdate {
+        //     old: current_value.clone(),
+        //     new: Arc::new(value),
+        // };
+        // *current_value = update.new.clone();
 
-        self.0.handle_value_update(update)?;
+        // self.0.handle_value_update(update)?;
 
         Ok(())
     }
 }
 
-impl<T> CharacteristicInner<T>
-where
-    T: Clone + Serialize,
-{
-    fn handle_value_update(&self, update: CharacteristicUpdate<T>) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(1);
+impl<T: Attribute> CharacteristicInner<T> {
+    fn handle_value_update(&self, update: AttributeUpdate<T>) -> anyhow::Result<()> {
+        // let (tx, rx) = bounded(1);
         let callback_key = discriminant(&GattsEvent::Confirm {
             status: GattStatus::Busy,
             conn_id: 0,
@@ -331,138 +323,135 @@ where
             value: None,
         });
 
-        self.updates_tx
-            .send(update.clone())
-            .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
+        // self.updates_tx
+        //     .send(update.clone())
+        //     .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
 
-        let service = self.get_service()?;
-        let app = service.get_app()?;
-        let gatts = app.get_gatts()?;
+        // let service = self.get_service()?;
+        // let app = service.get_app()?;
+        // let gatts = app.get_gatts()?;
 
-        let gatts_interface = app
-            .interface
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
-            .clone()
-            .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
+        // let gatts_interface = app
+        //     .interface
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
+        //     .clone()
+        //     .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
 
-        let connections = app
-            .connections
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read connections in App: {:?}", app.id))?;
+        // let connections = app
+        //     .connections
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read connections in App: {:?}", app.id))?;
 
-        let characteristic_handle = self
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Handle in None, likely Characteristic was not initialized properly"
-            ))?;
+        // let characteristic_handle = self
+        //     .handle
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read handle"))?
+        //     .ok_or(anyhow::anyhow!(
+        //         "Handle in None, likely Characteristic was not initialized properly"
+        //     ))?;
 
-        let notify_data =
-            bincode::serde::encode_to_vec((*update.new).clone(), bincode::config::standard())?;
+        // let notify_data =
+        //     bincode::serde::encode_to_vec((*update.new).clone(), bincode::config::standard())?;
 
-        gatts
-            .gatts_events
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events in App: {:?}", app.id))?
-            .insert(callback_key, tx);
+        // gatts
+        //     .gatts_events
+        //     .write()
+        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events in App: {:?}", app.id))?
+        //     .insert(callback_key, tx);
 
-        let send_results = connections
-            .values()
-            .map(|connection| {
-                let mtu = connection.mtu.ok_or(anyhow::anyhow!(
-                    "Failed to read MTU for connection: {:?}",
-                    connection.id
-                ))?;
-                let data_end_index = notify_data.len().min(mtu.into());
+        // let send_results = connections
+        //     .values()
+        //     .map(|connection| {
+        //         let mtu = connection.mtu.ok_or(anyhow::anyhow!(
+        //             "Failed to read MTU for connection: {:?}",
+        //             connection.id
+        //         ))?;
+        //         let data_end_index = notify_data.len().min(mtu.into());
 
-                if data_end_index != notify_data.len() {
-                    log::warn!(
-                        "Data is too long to be sent, MTU is too small, cutting data: {:?}",
-                        mtu
-                    );
-                    // return Err(anyhow::anyhow!(
-                    //     "Data is too long to be sent, MTU is too small: {:?}",
-                    //     mtu
-                    // ));
-                }
+        //         if data_end_index != notify_data.len() {
+        //             log::warn!(
+        //                 "Data is too long to be sent, MTU is too small, cutting data: {:?}",
+        //                 mtu
+        //             );
+        //             // return Err(anyhow::anyhow!(
+        //             //     "Data is too long to be sent, MTU is too small: {:?}",
+        //             //     mtu
+        //             // ));
+        //         }
 
-                gatts
-                    .gatts
-                    .indicate(
-                        gatts_interface,
-                        connection.id,
-                        characteristic_handle,
-                        &notify_data[..data_end_index],
-                    )
-                    .map_err(|err| {
-                        anyhow::anyhow!(
-                            "Failed to send GATT indication to {:?}: {:?}",
-                            connection.address,
-                            err
-                        )
-                    })?;
+        //         gatts
+        //             .gatts
+        //             .indicate(
+        //                 gatts_interface,
+        //                 connection.id,
+        //                 characteristic_handle,
+        //                 &notify_data[..data_end_index],
+        //             )
+        //             .map_err(|err| {
+        //                 anyhow::anyhow!(
+        //                     "Failed to send GATT indication to {:?}: {:?}",
+        //                     connection.address,
+        //                     err
+        //                 )
+        //             })?;
 
-                match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-                    Ok(GattsEventMessage(
-                        _,
-                        GattsEvent::Confirm {
-                            status,
-                            conn_id,
-                            handle,
-                            ..
-                        },
-                    )) => {
-                        if conn_id != connection.id {
-                            return Err(anyhow::anyhow!(
-                                "Received unexpected GATT confirm: {:?}",
-                                conn_id
-                            ));
-                        }
+        //         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        //             Ok(GattsEventMessage(
+        //                 _,
+        //                 GattsEvent::Confirm {
+        //                     status,
+        //                     conn_id,
+        //                     handle,
+        //                     ..
+        //                 },
+        //             )) => {
+        //                 if conn_id != connection.id {
+        //                     return Err(anyhow::anyhow!(
+        //                         "Received unexpected GATT confirm: {:?}",
+        //                         conn_id
+        //                     ));
+        //                 }
 
-                        if handle != characteristic_handle {
-                            return Err(anyhow::anyhow!(
-                                "Received unexpected GATT confirm handle: {:?}",
-                                handle
-                            ));
-                        }
+        //                 if handle != characteristic_handle {
+        //                     return Err(anyhow::anyhow!(
+        //                         "Received unexpected GATT confirm handle: {:?}",
+        //                         handle
+        //                     ));
+        //                 }
 
-                        if status != GattStatus::Ok {
-                            return Err(anyhow::anyhow!(
-                                "Failed to confirm characteristic indicate: {:?}",
-                                status
-                            ));
-                        }
+        //                 if status != GattStatus::Ok {
+        //                     return Err(anyhow::anyhow!(
+        //                         "Failed to confirm characteristic indicate: {:?}",
+        //                         status
+        //                     ));
+        //                 }
 
-                        Ok(())
-                    }
-                    Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
-                    Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
-                }
-            })
-            .collect::<Vec<anyhow::Result<()>>>();
+        //                 Ok(())
+        //             }
+        //             Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
+        //             Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
+        //         }
+        //     })
+        //     .collect::<Vec<anyhow::Result<()>>>();
 
-        let errors: Vec<anyhow::Error> = send_results
-            .into_iter()
-            .filter_map(anyhow::Result::err)
-            .collect();
+        // let errors: Vec<anyhow::Error> = send_results
+        //     .into_iter()
+        //     .filter_map(anyhow::Result::err)
+        //     .collect();
 
-        if !errors.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Failed to notify some of connections: {:?}",
-                errors
-            ));
-        }
+        // if !errors.is_empty() {
+        //     return Err(anyhow::anyhow!(
+        //         "Failed to notify some of connections: {:?}",
+        //         errors
+        //     ));
+        // }
 
         Ok(())
     }
 }
 
-impl<T> CharacteristicInner<T>
-where
-    T: Clone,
-{
+impl<T: Attribute> CharacteristicInner<T> {
     fn get_service(&self) -> anyhow::Result<Arc<ServiceInner>> {
         self.service
             .read()

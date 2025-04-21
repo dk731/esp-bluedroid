@@ -13,8 +13,10 @@ use esp_idf_svc::bt::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    app::AppInner, attribute::Attribute, characteristic::Characteristic, GattsEvent,
-    GattsEventMessage,
+    app::AppInner,
+    attribute::{Attribute, SerializableAttribute},
+    characteristic::Characteristic,
+    GattsEvent, GattsEventMessage,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,13 +139,10 @@ impl Service {
         }
     }
 
-    pub fn register_characteristic<T>(
+    pub fn register_characteristic<T: Attribute>(
         &self,
         characteristic: Characteristic<T>,
-    ) -> anyhow::Result<Characteristic<T>>
-    where
-        T: Serialize + for<'de> Deserialize<'de> + Sync + Send + Clone,
-    {
+    ) -> anyhow::Result<Characteristic<T>> {
         characteristic.register_bluedroid(&self.0)?;
         let characteristic_handle = characteristic
             .0
@@ -154,19 +153,19 @@ impl Service {
                 "Characteristic handle is None, likely Characteristic was not initialized properly"
             ))?;
 
-        if self
-            .0
-            .characteristics
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
-            .insert(characteristic_handle, characteristic.0.clone())
-            .is_some()
-        {
-            return Err(anyhow::anyhow!(
-                "Characteristic with handle {:?} already exists",
-                characteristic_handle
-            ));
-        }
+        // if self
+        //     .0
+        //     .characteristics
+        //     .write()
+        //     .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
+        //     .insert(characteristic_handle, characteristic.0.clone())
+        //     .is_some()
+        // {
+        //     return Err(anyhow::anyhow!(
+        //         "Characteristic with handle {:?} already exists",
+        //         characteristic_handle
+        //     ));
+        // }
 
         Ok(characteristic)
     }

@@ -13,7 +13,7 @@ use std::{
 };
 
 use app::{App, AppInner};
-use attribute::Attribute;
+use attribute::{Attribute, AttributeInner};
 use crossbeam_channel::bounded;
 use esp_idf_svc::{
     bt::{
@@ -41,7 +41,7 @@ pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
     write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
-    attributes: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute>>>>,
+    attributes: Arc<RwLock<HashMap<Handle, Arc<AttributeInner>>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -264,7 +264,7 @@ impl GattsInner {
         }
     }
 
-    fn get_attribute(&self, handle: Handle) -> anyhow::Result<Arc<dyn Attribute>> {
+    fn get_attribute(&self, handle: Handle) -> anyhow::Result<Arc<AttributeInner>> {
         let attribute = self
             .attributes
             .read()
@@ -299,7 +299,7 @@ impl GattsInner {
 
                 let response = (|| {
                     let attribute = self.get_attribute( handle)?;
-                    let bytes = attribute.as_bytes()?;
+                    let bytes = attribute.data.read().map_err(|_| anyhow::anyhow!("Failed to read attribute data"))?.get_bytes()?;
 
                     let app = self.apps.read().map_err(|_| {
                         anyhow::anyhow!("Failed to acquire read lock on Gatts connections")
@@ -379,7 +379,11 @@ impl GattsInner {
 
                     if !is_prep {
                         let attribute = self.get_attribute(handle)?;
-                        attribute.update_from_bytes(&temp_buffer.value)?;
+                        attribute
+                            .data
+                            .write()
+                            .map_err(|_| anyhow::anyhow!("Failed to write attribute data"))?
+                            .update_from_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())
@@ -433,7 +437,11 @@ impl GattsInner {
 
                     if !canceled {
                         let attribute = self.get_attribute(temp_buffer.handle)?;
-                        attribute.update_from_bytes(&temp_buffer.value)?;
+                        attribute
+                            .data
+                            .write()
+                            .map_err(|_| anyhow::anyhow!("Failed to write attribute data"))?
+                            .update_from_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())

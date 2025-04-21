@@ -2,7 +2,8 @@ use esp_bluedroid::{
     ble,
     gatts::{
         app::App,
-        characteristic::{Characteristic, CharacteristicConfig, CharacteristicUpdate},
+        attribute::{Attribute, SerializableAttribute},
+        characteristic::{Characteristic, CharacteristicConfig},
         service::Service,
     },
 };
@@ -39,6 +40,24 @@ fn main() {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Qwe(u8);
+impl Attribute for Qwe {
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        Ok(vec![self.0])
+    }
+
+    fn update_from_bytes(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+        let Some(new_value) = bytes.get(0) else {
+            return Err(anyhow::anyhow!("Failed to parse bytes to u8"));
+        };
+
+        *self = Qwe(new_value.clone());
+
+        Ok(())
+    }
+}
+
 fn run_ble_example() -> anyhow::Result<()> {
     let peripherals = Peripherals::take()?;
     let ble = ble::Ble::new(peripherals.modem)?;
@@ -62,18 +81,17 @@ fn run_ble_example() -> anyhow::Result<()> {
             readable: true,
             writable: true,
             broadcasted: true,
-            notifiable: true,
-            indicateable: true,
+            enable_notify: true,
         },
-        123,
+        Qwe(123),
     ))?;
 
     let thread_char = char1.clone();
-    std::thread::spawn(move || {
-        for CharacteristicUpdate { old, new } in thread_char.0.updates_rx.iter() {
-            log::info!("Characteristic was update.\tOld: {:?}\tNew: {:?}", old, new);
-        }
-    });
+    // std::thread::spawn(move || {
+    //     for CharacteristicUpdate { old, new } in thread_char.0.updates_rx.iter() {
+    //         log::info!("Characteristic was update.\tOld: {:?}\tNew: {:?}", old, new);
+    //     }
+    // });
 
     service.start()?;
     ble.gap.start_advertising()?;
@@ -82,7 +100,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        char1.update_value(i)?;
+        char1.update_value(Qwe(i))?;
         i += 1;
     }
 
