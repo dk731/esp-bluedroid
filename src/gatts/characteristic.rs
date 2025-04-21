@@ -93,8 +93,7 @@ pub struct CharacteristicInner<T: Attribute> {
     pub config: CharacteristicConfig,
     pub handle: RwLock<Option<Handle>>,
 
-    attribute: RwLock<AttributeInner>,
-    _p: std::marker::PhantomData<T>,
+    attribute: AttributeInner<T>,
     // attribute: dyn TypedAttribute,
     // updates_tx: Sender<CharacteristicUpdate<T>>,
     // pub updates_rx: Receiver<CharacteristicUpdate<T>>,
@@ -108,8 +107,7 @@ impl<T: Attribute> Characteristic<T> {
             config,
             // attribute: RwLock::new(AttributeInner::new(Arc::new(value))),
             // value: RwLock::new(Arc::new(value)),
-            attribute: RwLock::new(todo!()),
-            _p: std::marker::PhantomData,
+            attribute: todo!(),
         };
 
         let characterstic = Self(Arc::new(characterstic), std::marker::PhantomData);
@@ -230,48 +228,12 @@ impl<T: Attribute> Characteristic<T> {
         }
     }
 
-    // This locks internal value, so while lock is held, characteristic value cannot be changed
     pub fn value(&self) -> anyhow::Result<Arc<T>> {
-        // Ok(self
-        //     .0
-        //     .value
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
-        //     .clone())
-
-        let data = self
-            .0
-            .attribute
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read characteristic attribute value"))?
-            .get_bytes()? as T
-
-        // let a = self
-        //     .0
-        //     .attribute
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic attribute value"))?;
-        // a.get_bytes()?;
-
-        todo!()
+        self.0.attribute.get_value()
     }
 
     pub fn update_value(&self, value: T) -> anyhow::Result<()> {
-        // let mut current_value = self
-        //     .0
-        //     .value
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
-
-        // let update = AttributeUpdate {
-        //     old: current_value.clone(),
-        //     new: Arc::new(value),
-        // };
-        // *current_value = update.new.clone();
-
-        // self.0.handle_value_update(update)?;
-
-        Ok(())
+        self.0.attribute.update(value)
     }
 }
 

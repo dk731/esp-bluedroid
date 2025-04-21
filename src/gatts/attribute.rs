@@ -42,6 +42,11 @@ where
     }
 }
 
+pub trait Attribute2: Send + Sync + 'static {
+    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()>;
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>>;
+}
+
 #[derive(Clone)]
 pub struct AttributeUpdate<T> {
     pub old: T,
@@ -75,14 +80,14 @@ impl<T: Attribute> AttributeInner<T> {
             .get_bytes()
     }
 
-    pub fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
+    pub fn update(&self, new_value: T) -> anyhow::Result<()> {
         let mut value = self
             .value
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write attribute"))?;
         let old_value = value.clone();
 
-        *value = Arc::new(T::from_bytes(bytes)?);
+        *value = Arc::new(new_value);
         let new_value = value.clone();
 
         self.updates_tx
@@ -93,5 +98,23 @@ impl<T: Attribute> AttributeInner<T> {
             .map_err(|_| anyhow::anyhow!("Failed to send attribute update"))?;
 
         Ok(())
+    }
+
+    pub fn get_value(&self) -> anyhow::Result<Arc<T>> {
+        Ok(self
+            .value
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read attribute"))?
+            .clone())
+    }
+}
+
+impl<T: Attribute> Attribute2 for AttributeInner<T> {
+    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        todo!()
     }
 }
