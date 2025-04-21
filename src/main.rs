@@ -59,7 +59,7 @@ fn run_ble_example() -> anyhow::Result<()> {
             },
             is_primary: true,
         },
-        15,
+        20,
     ))?;
 
     let char1 = service.register_characteristic(&Characteristic::new(

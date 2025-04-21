@@ -41,7 +41,7 @@ pub struct Gatts(pub Arc<GattsInner>);
 
 pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
-    apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
+    pub apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
     write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
     attributes: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
 
@@ -517,7 +517,8 @@ impl GattsInner {
                     ))?
                     .clone();
 
-                app.connections
+                let connection = app
+                    .connections
                     .write()
                     .map_err(|_| {
                         anyhow::anyhow!("Failed to acquire write lock on Gatts connections")
@@ -527,6 +528,11 @@ impl GattsInner {
                         "No found connection with given connection id: {:?}",
                         conn_id
                     ))?;
+
+                let connection_status = ConnectionStatus::Disconnected(connection);
+
+                self.gap_connections_tx.send(connection_status.clone())?;
+                self.connections_tx.send(connection_status)?;
 
                 Ok(())
             }
