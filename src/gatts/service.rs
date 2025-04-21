@@ -84,7 +84,7 @@ impl Service {
 
         gatts
             .gatts
-            .create_service(gatt_interface, &self.0.id.0, 10)
+            .create_service(gatt_interface, &self.0.id.0, self.0.num_handles)
             .map_err(|err| {
                 anyhow::anyhow!("Failed to create GATT service {:?}: {:?}", self.0.id, err)
             })?;
