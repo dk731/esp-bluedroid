@@ -15,7 +15,8 @@ use std::{
 use app::{App, AppInner};
 
 use attribute::AnyAttribute;
-use crossbeam_channel::bounded;
+use connection::ConnectionStatus;
+use crossbeam_channel::{bounded, Receiver, Sender};
 use esp_idf_svc::{
     bt::{
         ble::gatt::{
@@ -44,13 +45,15 @@ pub struct GattsInner {
     write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
     attributes: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
 
-    gatts_events: Arc<
-        RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
-    >,
+    pub connections_rx: Receiver<ConnectionStatus>,
+    connections_tx: Sender<ConnectionStatus>,
+
+    gatts_events: Arc<RwLock<HashMap<Discriminant<GattsEvent>, Sender<GattsEventMessage>>>>,
 }
 
 impl Gatts {
     pub fn new(bt: ExtBtDriver) -> anyhow::Result<Self> {
+        let (connections_tx, connections_rx) = bounded(1);
         let gatts = EspGatts::new(bt)?;
         let gatts_inner = GattsInner {
             gatts,
@@ -58,6 +61,8 @@ impl Gatts {
             gatts_events: Default::default(),
             write_buffer: Default::default(),
             attributes: Default::default(),
+            connections_rx,
+            connections_tx,
         };
 
         let gatts = Self(Arc::new(gatts_inner));
@@ -472,21 +477,22 @@ impl GattsInner {
                     ))?
                     .clone();
 
+                let connection = connection::ConnectionInner {
+                    id: conn_id,
+                    link_role,
+                    mtu: None,
+                    conn_params,
+                    address: addr,
+                };
                 app.connections
                     .write()
                     .map_err(|_| {
                         anyhow::anyhow!("Failed to acquire write lock on Gatts connections")
                     })?
-                    .insert(
-                        conn_id,
-                        connection::ConnectionInner {
-                            id: conn_id,
-                            link_role,
-                            mtu: None,
-                            conn_params,
-                            address: addr,
-                        },
-                    );
+                    .insert(conn_id, connection.clone());
+
+                self.connections_tx
+                    .send(ConnectionStatus::Connected(connection))?;
 
                 Ok(())
             }

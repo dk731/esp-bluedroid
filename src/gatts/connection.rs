@@ -3,6 +3,12 @@ use esp_idf_svc::bt::{
     BdAddr,
 };
 
+pub enum ConnectionStatus {
+    Connected(ConnectionInner),
+    Disconnected(ConnectionInner),
+}
+
+#[derive(Debug, Clone)]
 pub struct ConnectionInner {
     pub id: ConnectionId,
     pub link_role: u8,

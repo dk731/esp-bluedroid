@@ -12,9 +12,8 @@ use esp_idf_svc::bt::{
 
 use super::{
     attribute::{AnyAttribute, Attribute, AttributeInner},
-    characteristic::{self, CharacteristicInner},
+    characteristic::CharacteristicInner,
     event::{GattsEvent, GattsEventMessage},
-    service,
 };
 
 pub struct DescriptorConfig {
