@@ -299,7 +299,7 @@ impl GattsInner {
 
                 let response = (|| {
                     let attribute = self.get_attribute( handle)?;
-                    let bytes = attribute.data.read().map_err(|_| anyhow::anyhow!("Failed to read attribute data"))?.get_bytes()?;
+                    let bytes = attribute.data.read().map_err(|_| anyhow::anyhow!("Failed to read attribute data"))?.new_from_bytes()?;
 
                     let app = self.apps.read().map_err(|_| {
                         anyhow::anyhow!("Failed to acquire read lock on Gatts connections")
@@ -325,7 +325,6 @@ impl GattsInner {
 
                     let mut response = GattResponse::new();
                     response.attr_handle(handle).auth_req(0).offset(offset).value(&bytes[offset as usize..end_index])?;
-
 
                     Ok(response)
                 })()
@@ -383,7 +382,7 @@ impl GattsInner {
                             .data
                             .write()
                             .map_err(|_| anyhow::anyhow!("Failed to write attribute data"))?
-                            .update_from_bytes(&temp_buffer.value)?;
+                            .to_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())
@@ -441,7 +440,7 @@ impl GattsInner {
                             .data
                             .write()
                             .map_err(|_| anyhow::anyhow!("Failed to write attribute data"))?
-                            .update_from_bytes(&temp_buffer.value)?;
+                            .to_bytes(&temp_buffer.value)?;
                     }
 
                     Ok(())

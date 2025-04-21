@@ -43,11 +43,11 @@ fn main() {
 #[derive(Debug, Clone)]
 struct Qwe(u8);
 impl Attribute for Qwe {
-    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    fn new_from_bytes(&self) -> anyhow::Result<Vec<u8>> {
         Ok(vec![self.0])
     }
 
-    fn update_from_bytes(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+    fn to_bytes(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         let Some(new_value) = bytes.get(0) else {
             return Err(anyhow::anyhow!("Failed to parse bytes to u8"));
         };

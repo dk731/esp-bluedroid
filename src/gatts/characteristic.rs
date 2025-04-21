@@ -81,51 +81,6 @@ impl std::hash::Hash for CharacteristicId {
     }
 }
 
-// impl Attribute for CharacteristicInner {
-//     fn as_bytes(&self) -> anyhow::Result<Vec<u8>> {
-//         let value_lock = self
-//             .value
-//             .read()
-//             .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?;
-
-//         bincode::serde::encode_to_vec((**value_lock).clone(), bincode::config::standard()).map_err(
-//             |err| {
-//                 anyhow::anyhow!(
-//                     "Failed to serialize characteristic value to bytes: {:?}",
-//                     err
-//                 )
-//             },
-//         )
-//     }
-
-//     fn update_from_bytes(&self, data: &[u8]) -> anyhow::Result<()> {
-//         let (new_value, _): (T, usize) =
-//             bincode::serde::decode_from_slice(data, bincode::config::standard()).map_err(
-//                 |err| {
-//                     anyhow::anyhow!(
-//                         "Failed to deserialize bytes to characteristic value: {:?}",
-//                         err
-//                     )
-//                 },
-//             )?;
-
-//         let mut current_value = self
-//             .value
-//             .write()
-//             .map_err(|_| anyhow::anyhow!("Failed to write characteristic value"))?;
-
-//         let update = CharacteristicUpdate {
-//             old: current_value.clone(),
-//             new: Arc::new(new_value),
-//         };
-//         *current_value = update.new.clone();
-
-//         self.handle_value_update(update)?;
-
-//         Ok(())
-//     }
-// }
-
 #[derive(Clone)]
 pub struct Characteristic<T: Attribute>(
     pub Arc<CharacteristicInner<T>>,
@@ -283,6 +238,13 @@ impl<T: Attribute> Characteristic<T> {
         //     .read()
         //     .map_err(|_| anyhow::anyhow!("Failed to read characteristic value"))?
         //     .clone())
+
+        let data = self
+            .0
+            .attribute
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read characteristic attribute value"))?
+            .get_bytes()? as T
 
         // let a = self
         //     .0
