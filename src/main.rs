@@ -2,7 +2,7 @@ use esp_bluedroid::{
     ble,
     gatts::{
         app::App,
-        attribute::{Attribute, SerializableAttribute},
+        attribute::{Attribute, AttributeUpdate, SerializableAttribute},
         characteristic::{Characteristic, CharacteristicConfig},
         service::Service,
     },
@@ -44,14 +44,18 @@ fn main() {
 struct Qwe(u8);
 impl Attribute for Qwe {
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        todo!()
+        Ok(vec![self.0])
     }
 
     fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        todo!()
+        if bytes.len() != 1 {
+            return Err(anyhow::anyhow!("Invalid length for Qwe attribute"));
+        }
+        let value = bytes[0];
+        Ok(Qwe(value))
     }
 }
 
@@ -83,12 +87,32 @@ fn run_ble_example() -> anyhow::Result<()> {
         Qwe(123),
     ))?;
 
+    let char2 = service.register_characteristic(Characteristic::new(
+        CharacteristicConfig {
+            uuid: BtUuid::uuid128(3),
+            value_max_len: 100,
+            readable: true,
+            writable: true,
+            broadcasted: true,
+            enable_notify: true,
+        },
+        CoolNestedChar {
+            bar: "bar".to_string(),
+            foo_bar: FooBar {
+                bar: "bar".to_string(),
+                foo_bar: "foo_bar".to_string(),
+            },
+            temperature: 0,
+            messages: vec!["Hello".to_string(), "World".to_string()],
+        },
+    ))?;
+
     let thread_char = char1.clone();
-    // std::thread::spawn(move || {
-    //     for CharacteristicUpdate { old, new } in thread_char.0.updates_rx.iter() {
-    //         log::info!("Characteristic was update.\tOld: {:?}\tNew: {:?}", old, new);
-    //     }
-    // });
+    std::thread::spawn(move || {
+        for AttributeUpdate { old, new } in thread_char.0.attribute.updates_rx.iter() {
+            log::info!("Characteristic was update.\tOld: {:?}\tNew: {:?}", old, new);
+        }
+    });
 
     service.start()?;
     ble.gap.start_advertising()?;

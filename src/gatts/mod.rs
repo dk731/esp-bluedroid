@@ -147,7 +147,7 @@ impl Gatts {
                     };
 
                     if let Err(err) = gatts.handle_gatts_global_event(event) {
-                        log::error!("Failed to handle write event: {:?}", err);
+                        log::error!("Failed to handle global event: {:?}", err);
                     }
                 }
             })?;
@@ -191,15 +191,7 @@ impl Gatts {
 
     pub fn register_app(&self, app: App) -> anyhow::Result<App> {
         app.register_bluedroid(&self.0)?;
-        let interface = app
-            .0
-            .interface
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to acquire read lock on Gatts interface"))?
-            .ok_or(anyhow::anyhow!(
-                "No found Gatt interface for app: {:?}",
-                app.0.id
-            ))?;
+        let interface = app.0.interface()?;
 
         if self
             .0
@@ -298,7 +290,7 @@ impl GattsInner {
                 }
 
                 let response = (|| {
-                    let attribute = self.get_attribute( handle)?;
+                    let attribute = self.get_attribute(handle)?;
                     let bytes = attribute.get_bytes()?;
 
                     let app = self.apps.read().map_err(|_| {

@@ -58,8 +58,8 @@ pub struct AttributeInner<T: Attribute> {
     value: RwLock<Arc<T>>,
     pub handle: RwLock<Option<Handle>>,
 
-    pub updates_rx: Receiver<AttributeUpdate<Arc<dyn Attribute>>>,
-    updates_tx: Sender<AttributeUpdate<Arc<dyn Attribute>>>,
+    pub updates_rx: Receiver<AttributeUpdate<Arc<T>>>,
+    updates_tx: Sender<AttributeUpdate<Arc<T>>>,
 }
 
 impl<T: Attribute> AttributeInner<T> {
@@ -80,14 +80,14 @@ impl<T: Attribute> AttributeInner<T> {
             .get_bytes()
     }
 
-    pub fn update(&self, new_value: T) -> anyhow::Result<()> {
+    pub fn update(&self, new_value: Arc<T>) -> anyhow::Result<()> {
         let mut value = self
             .value
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write attribute"))?;
         let old_value = value.clone();
 
-        *value = Arc::new(new_value);
+        *value = new_value;
         let new_value = value.clone();
 
         self.updates_tx
@@ -122,16 +122,5 @@ impl<T: Attribute> AttributeInner<T> {
             .read()
             .map_err(|_| anyhow::anyhow!("Failed to read attribute handle"))?
             .ok_or_else(|| anyhow::anyhow!("Attribute handle is not set"))
-    }
-}
-
-impl<T: Attribute> AnyAttribute for AttributeInner<T> {
-    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
-        let new_value = T::from_bytes(bytes)?;
-        self.update(new_value)
-    }
-
-    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        self.get_bytes()
     }
 }

@@ -11,7 +11,7 @@ use esp_idf_svc::bt::{
 };
 
 use super::{
-    attribute::{Attribute, AttributeInner, AttributeUpdate},
+    attribute::{AnyAttribute, Attribute, AttributeInner},
     event::GattsEventMessage,
     service::ServiceInner,
     GattsEvent,
@@ -88,7 +88,7 @@ pub struct CharacteristicInner<T: Attribute> {
     pub service: RwLock<Weak<ServiceInner>>,
     pub config: CharacteristicConfig,
 
-    attribute: AttributeInner<T>,
+    pub attribute: AttributeInner<T>,
 }
 
 impl<T: Attribute> Characteristic<T> {
@@ -143,18 +143,10 @@ impl<T: Attribute> Characteristic<T> {
             char_uuid: BtUuid::uuid16(0),
         });
 
-        // self.0.
         let service = self.0.get_service()?;
         let app = service.get_app()?;
         let gatts = app.get_gatts()?;
-
-        let service_handle = service
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Service handle is None, likely Service was not initialized properly"
-            ))?;
+        let service_handle = service.handle()?;
 
         gatts
             .gatts_events
@@ -218,146 +210,7 @@ impl<T: Attribute> Characteristic<T> {
     }
 
     pub fn update_value(&self, value: T) -> anyhow::Result<()> {
-        self.0.attribute.update(value)
-    }
-}
-
-impl<T: Attribute> CharacteristicInner<T> {
-    fn handle_value_update(&self, update: AttributeUpdate<T>) -> anyhow::Result<()> {
-        // let (tx, rx) = bounded(1);
-        // let callback_key = discriminant(&GattsEvent::Confirm {
-        //     status: GattStatus::Busy,
-        //     conn_id: 0,
-        //     handle: 0,
-        //     value: None,
-        // });
-
-        // // self.attribute
-        // //     .updates_rx
-        // //     .send(update.clone())
-        // //     .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
-
-        // let service = self.get_service()?;
-        // let app = service.get_app()?;
-        // let gatts = app.get_gatts()?;
-
-        // let gatts_interface = app
-        //     .interface
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
-        //     .clone()
-        //     .ok_or(anyhow::anyhow!("Gatt interface is not initialized"))?;
-
-        // let connections = app
-        //     .connections
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read connections in App: {:?}", app.id))?;
-
-        // let characteristic_handle = self
-        //     .handle
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read handle"))?
-        //     .ok_or(anyhow::anyhow!(
-        //         "Handle in None, likely Characteristic was not initialized properly"
-        //     ))?;
-
-        // let notify_data =
-        //     bincode::serde::encode_to_vec((*update.new).clone(), bincode::config::standard())?;
-
-        // gatts
-        //     .gatts_events
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to write Gatts events in App: {:?}", app.id))?
-        //     .insert(callback_key, tx);
-
-        // let send_results = connections
-        //     .values()
-        //     .map(|connection| {
-        //         let mtu = connection.mtu.ok_or(anyhow::anyhow!(
-        //             "Failed to read MTU for connection: {:?}",
-        //             connection.id
-        //         ))?;
-        //         let data_end_index = notify_data.len().min(mtu.into());
-
-        //         if data_end_index != notify_data.len() {
-        //             log::warn!(
-        //                 "Data is too long to be sent, MTU is too small, cutting data: {:?}",
-        //                 mtu
-        //             );
-        //             // return Err(anyhow::anyhow!(
-        //             //     "Data is too long to be sent, MTU is too small: {:?}",
-        //             //     mtu
-        //             // ));
-        //         }
-
-        //         gatts
-        //             .gatts
-        //             .indicate(
-        //                 gatts_interface,
-        //                 connection.id,
-        //                 characteristic_handle,
-        //                 &notify_data[..data_end_index],
-        //             )
-        //             .map_err(|err| {
-        //                 anyhow::anyhow!(
-        //                     "Failed to send GATT indication to {:?}: {:?}",
-        //                     connection.address,
-        //                     err
-        //                 )
-        //             })?;
-
-        //         match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-        //             Ok(GattsEventMessage(
-        //                 _,
-        //                 GattsEvent::Confirm {
-        //                     status,
-        //                     conn_id,
-        //                     handle,
-        //                     ..
-        //                 },
-        //             )) => {
-        //                 if conn_id != connection.id {
-        //                     return Err(anyhow::anyhow!(
-        //                         "Received unexpected GATT confirm: {:?}",
-        //                         conn_id
-        //                     ));
-        //                 }
-
-        //                 if handle != characteristic_handle {
-        //                     return Err(anyhow::anyhow!(
-        //                         "Received unexpected GATT confirm handle: {:?}",
-        //                         handle
-        //                     ));
-        //                 }
-
-        //                 if status != GattStatus::Ok {
-        //                     return Err(anyhow::anyhow!(
-        //                         "Failed to confirm characteristic indicate: {:?}",
-        //                         status
-        //                     ));
-        //                 }
-
-        //                 Ok(())
-        //             }
-        //             Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
-        //             Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
-        //         }
-        //     })
-        //     .collect::<Vec<anyhow::Result<()>>>();
-
-        // let errors: Vec<anyhow::Error> = send_results
-        //     .into_iter()
-        //     .filter_map(anyhow::Result::err)
-        //     .collect();
-
-        // if !errors.is_empty() {
-        //     return Err(anyhow::anyhow!(
-        //         "Failed to notify some of connections: {:?}",
-        //         errors
-        //     ));
-        // }
-
-        Ok(())
+        self.0.attribute.update(Arc::new(value))
     }
 }
 
@@ -368,5 +221,134 @@ impl<T: Attribute> CharacteristicInner<T> {
             .map_err(|_| anyhow::anyhow!("Failed to read Service"))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Service"))
+    }
+
+    pub fn handle(&self) -> anyhow::Result<Handle> {
+        self.attribute.handle()
+    }
+}
+
+impl<T: Attribute> AnyAttribute for CharacteristicInner<T> {
+    fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.attribute.update(Arc::new(T::from_bytes(bytes)?))?;
+
+        let (tx, rx) = bounded(1);
+        let callback_key = discriminant(&GattsEvent::Confirm {
+            status: GattStatus::Busy,
+            conn_id: 0,
+            handle: 0,
+            value: None,
+        });
+
+        let service = self.get_service()?;
+        let app = service.get_app()?;
+        let gatts = app.get_gatts()?;
+        let gatts_interface = app.interface()?;
+        let characteristic_handle = self.attribute.handle()?;
+
+        let connections = app
+            .connections
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read connections in App: {:?}", app.id))?;
+        let notify_data = self.attribute.get_bytes()?;
+
+        gatts
+            .gatts_events
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatts events in App: {:?}", app.id))?
+            .insert(callback_key, tx);
+
+        let send_results = connections
+            .values()
+            .map(|connection| {
+                let mtu = connection.mtu.ok_or(anyhow::anyhow!(
+                    "Failed to read MTU for connection: {:?}",
+                    connection.id
+                ))?;
+                let data_end_index = notify_data.len().min(mtu.into());
+
+                if data_end_index != notify_data.len() {
+                    log::warn!(
+                        "Data is too long to be sent, MTU is too small, cutting data: {:?}",
+                        mtu
+                    );
+                    // return Err(anyhow::anyhow!(
+                    //     "Data is too long to be sent, MTU is too small: {:?}",
+                    //     mtu
+                    // ));
+                }
+
+                gatts
+                    .gatts
+                    .indicate(
+                        gatts_interface,
+                        connection.id,
+                        characteristic_handle,
+                        &notify_data[..data_end_index],
+                    )
+                    .map_err(|err| {
+                        anyhow::anyhow!(
+                            "Failed to send GATT indication to {:?}: {:?}",
+                            connection.address,
+                            err
+                        )
+                    })?;
+
+                match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+                    Ok(GattsEventMessage(
+                        _,
+                        GattsEvent::Confirm {
+                            status,
+                            conn_id,
+                            handle,
+                            ..
+                        },
+                    )) => {
+                        if conn_id != connection.id {
+                            return Err(anyhow::anyhow!(
+                                "Received unexpected GATT confirm: {:?}",
+                                conn_id
+                            ));
+                        }
+
+                        if handle != characteristic_handle {
+                            return Err(anyhow::anyhow!(
+                                "Received unexpected GATT confirm handle: {:?}",
+                                handle
+                            ));
+                        }
+
+                        if status != GattStatus::Ok {
+                            return Err(anyhow::anyhow!(
+                                "Failed to confirm characteristic indicate: {:?}",
+                                status
+                            ));
+                        }
+
+                        Ok(())
+                    }
+                    Ok(_) => Err(anyhow::anyhow!("Received unexpected GATT")),
+                    Err(_) => Err(anyhow::anyhow!("Timed out waiting for GATT")),
+                }
+            })
+            .collect::<Vec<anyhow::Result<()>>>();
+
+        let errors: Vec<anyhow::Error> = send_results
+            .into_iter()
+            .filter_map(anyhow::Result::err)
+            .collect();
+
+        if !errors.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Failed to notify some of connections: {:?}",
+                errors
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
+        self.attribute.get_bytes()
     }
 }

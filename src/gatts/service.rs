@@ -74,20 +74,8 @@ impl Service {
             },
         });
 
-        let gatt_interface = app
-            .interface
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
-            .ok_or(anyhow::anyhow!(
-                "Gatt interface is None, likely App was not initialized properly"
-            ))?;
-
-        let gatts = app
-            .gatts
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Gatts"))?
-            .upgrade()
-            .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))?;
+        let gatt_interface = app.interface()?;
+        let gatts = app.get_gatts()?;
 
         gatts
             .gatts_events
@@ -143,31 +131,35 @@ impl Service {
         characteristic: Characteristic<T>,
     ) -> anyhow::Result<Characteristic<T>> {
         characteristic.register_bluedroid(&self.0)?;
-        // let characteristic_handle = characteristic
-        //     .0
-        //     .handle
-        //     .read()
-        //     .map_err(|_| anyhow::anyhow!("Failed to read Characteristic handle"))?
-        //     .ok_or(anyhow::anyhow!(
-        //         "Characteristic handle is None, likely Characteristic was not initialized properly"
-        //     ))?;
+        let characteristic_handle = characteristic.0.handle()?;
+        let app = self.0.get_app()?;
+        let gatts = app.get_gatts()?;
 
-        // if self
-        //     .0
-        //     .characteristics
-        //     .write()
-        //     .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
-        //     .insert(characteristic_handle, characteristic.0.a)
-        //     .is_some()
-        // {
-        //     return Err(anyhow::anyhow!(
-        //         "Characteristic with handle {:?} already exists",
-        //         characteristic_handle
-        //     ));
-        // }
+        if self
+            .0
+            .characteristics
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
+            .insert(characteristic_handle, characteristic.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!(
+                "Characteristic with handle {:?} already exists",
+                characteristic_handle
+            ));
+        }
 
-        // Ok(characteristic)
-        todo!()
+        if gatts
+            .attributes
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatt attributes"))?
+            .insert(characteristic_handle, characteristic.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!("Failed to write Gatt attributes"));
+        }
+
+        Ok(characteristic)
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
@@ -176,17 +168,10 @@ impl Service {
             status: GattStatus::Busy,
             service_handle: 0,
         });
+
         let app = self.0.get_app()?;
         let gatts = app.get_gatts()?;
-
-        let handle = self
-            .0
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Service handle is None, likely Service was not initialized properly"
-            ))?;
+        let handle = self.0.handle()?;
 
         gatts
             .gatts_events
@@ -232,15 +217,7 @@ impl Service {
         });
         let app = self.0.get_app()?;
         let gatts = app.get_gatts()?;
-
-        let handle = self
-            .0
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Service handle is None, likly Service was not initialized properly"
-            ))?;
+        let handle = self.0.handle()?;
 
         gatts
             .gatts_events
@@ -286,5 +263,12 @@ impl ServiceInner {
             .map_err(|_| anyhow::anyhow!("Failed to read App"))?
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
+    }
+
+    pub fn handle(&self) -> anyhow::Result<Handle> {
+        self.handle
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Service handle"))?
+            .ok_or(anyhow::anyhow!("Service handle is not set"))
     }
 }

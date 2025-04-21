@@ -118,4 +118,12 @@ impl AppInner {
             .upgrade()
             .ok_or(anyhow::anyhow!("Failed to upgrade Gatts"))
     }
+
+    pub fn interface(&self) -> anyhow::Result<GattInterface> {
+        self.interface
+            .read()
+            .map_err(|_| anyhow::anyhow!("Failed to read Gatt interface"))?
+            .clone()
+            .ok_or(anyhow::anyhow!("Gatt interface is not set"))
+    }
 }
