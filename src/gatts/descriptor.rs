@@ -55,6 +55,7 @@ pub trait DescriptorAttribute<T: Attribute>: Send + Sync + 'static {
     fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()>;
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>>;
     fn register(&self, service: &Arc<CharacteristicInner<T>>) -> anyhow::Result<()>;
+    fn register_global(&self) -> anyhow::Result<()>;
     fn uuid(&self) -> BtUuid;
     fn handle(&self) -> anyhow::Result<Handle>;
 }
@@ -81,13 +82,13 @@ impl<T: Attribute, A: Attribute> Descriptor<T, A> {
     }
 }
 
-impl<T: Attribute> AnyAttribute for dyn DescriptorAttribute<T> {
+impl<T: Attribute, A: Attribute> AnyAttribute for DescriptorInner<T, A> {
     fn update_from_bytes(&self, bytes: &[u8]) -> anyhow::Result<()> {
-        self.update_from_bytes(bytes)
+        self.attribute.update(Arc::new(T::from_bytes(bytes)?))
     }
 
     fn get_bytes(&self) -> anyhow::Result<Vec<u8>> {
-        self.get_bytes()
+        self.attribute.get_bytes()
     }
 }
 

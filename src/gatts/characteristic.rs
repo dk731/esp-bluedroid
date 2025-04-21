@@ -15,7 +15,7 @@ use super::{
     attribute::{AnyAttribute, Attribute, AttributeInner},
     descriptor::{DescriptorAttribute, DescritporId},
     event::GattsEventMessage,
-    service::ServiceInner,
+    service::{self, ServiceInner},
     GattsEvent,
 };
 
@@ -137,8 +137,29 @@ impl<T: Attribute> Characteristic<T> {
             .map_err(|_| anyhow::anyhow!("Failed to write Service"))? = Arc::downgrade(service);
 
         self.register_characteristic()?;
+        self.register_in_global()?;
+
         for descriptor in self.0.descriptors.values() {
             descriptor.register(&self.0)?;
+        }
+
+        Ok(())
+    }
+
+    fn register_in_global(&self) -> anyhow::Result<()> {
+        let service = self.0.get_service()?;
+        let app = service.get_app()?;
+        let gatts = app.get_gatts()?;
+        let handle = self.0.handle()?;
+
+        if gatts
+            .attributes
+            .write()
+            .map_err(|_| anyhow::anyhow!("Failed to write Gatt attributes"))?
+            .insert(handle, self.0.clone())
+            .is_some()
+        {
+            return Err(anyhow::anyhow!("Failed to write Gatt attributes"));
         }
 
         Ok(())

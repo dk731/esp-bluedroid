@@ -13,7 +13,7 @@ use esp_idf_svc::bt::{
 
 use super::{
     app::AppInner,
-    attribute::Attribute,
+    attribute::{AnyAttribute, Attribute},
     characteristic::{Characteristic, CharacteristicAttribute},
     GattsEvent, GattsEventMessage,
 };
@@ -138,8 +138,6 @@ impl Service {
     ) -> anyhow::Result<Characteristic<T>> {
         characteristic.register_bluedroid(&self.0)?;
         let characteristic_handle = characteristic.0.handle()?;
-        let app = self.0.get_app()?;
-        let gatts = app.get_gatts()?;
 
         if self
             .0
@@ -153,32 +151,6 @@ impl Service {
                 "Characteristic with handle {:?} already exists",
                 characteristic_handle
             ));
-        }
-
-        let global_attributes = gatts
-            .attributes
-            .write()
-            .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?;
-
-        if global_attributes
-            .insert(characteristic_handle, characteristic.0.clone())
-            .is_some()
-        {
-            return Err(anyhow::anyhow!("Failed to write Gatt attributes"));
-        }
-
-        for descriptor in characteristic.0.descriptors {
-            let descriptor_handle = descriptor.1.handle()?;
-
-            if global_attributes
-                .insert(descriptor_handle, descriptor.1.clone())
-                .is_some()
-            {
-                return Err(anyhow::anyhow!(
-                    "Descriptor with handle {:?} already exists",
-                    descriptor_handle
-                ));
-            }
         }
 
         Ok(characteristic.clone())
