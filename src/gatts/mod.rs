@@ -7,14 +7,13 @@ pub mod event;
 pub mod service;
 
 use std::{
-    any::Any,
     collections::HashMap,
     mem::{discriminant, Discriminant},
     sync::{Arc, RwLock},
 };
 
 use app::{App, AppInner};
-use attribute::{Attribute, Attribute2, AttributeInner};
+use attribute::{AnyAttribute, Attribute};
 use crossbeam_channel::bounded;
 use esp_idf_svc::{
     bt::{
@@ -42,7 +41,7 @@ pub struct GattsInner {
     gatts: EspGatts<'static, svc::bt::Ble, ExtBtDriver>,
     apps: Arc<RwLock<HashMap<GattInterface, Arc<AppInner>>>>,
     write_buffer: Arc<RwLock<HashMap<TransferId, PrepareWriteBuffer>>>,
-    attributes: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute2>>>>,
+    attributes: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
 
     gatts_events: Arc<
         RwLock<HashMap<Discriminant<GattsEvent>, crossbeam_channel::Sender<GattsEventMessage>>>,
@@ -265,7 +264,7 @@ impl GattsInner {
         }
     }
 
-    fn get_attribute(&self, handle: Handle) -> anyhow::Result<Arc<dyn Attribute2>> {
+    fn get_attribute(&self, handle: Handle) -> anyhow::Result<Arc<dyn AnyAttribute>> {
         let attribute = self
             .attributes
             .read()

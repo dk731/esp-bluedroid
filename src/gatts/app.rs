@@ -7,7 +7,7 @@ use std::{
 use crossbeam_channel::bounded;
 use esp_idf_svc::bt::ble::gatt::{
     server::{AppId, ConnectionId},
-    GattInterface, GattServiceId, GattStatus, Handle,
+    GattInterface, GattStatus,
 };
 
 use super::{

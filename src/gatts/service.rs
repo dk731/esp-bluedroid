@@ -10,11 +10,10 @@ use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
     BtUuid,
 };
-use serde::{Deserialize, Serialize};
 
 use super::{
     app::AppInner,
-    attribute::{Attribute, SerializableAttribute},
+    attribute::{AnyAttribute, Attribute},
     characteristic::Characteristic,
     GattsEvent, GattsEventMessage,
 };
@@ -36,7 +35,7 @@ pub struct ServiceInner {
     pub id: ServiceId,
     pub num_handles: u16,
 
-    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn Attribute>>>>,
+    pub characteristics: Arc<RwLock<HashMap<Handle, Arc<dyn AnyAttribute>>>>,
     pub handle: RwLock<Option<Handle>>,
 }
 
@@ -144,21 +143,21 @@ impl Service {
         characteristic: Characteristic<T>,
     ) -> anyhow::Result<Characteristic<T>> {
         characteristic.register_bluedroid(&self.0)?;
-        let characteristic_handle = characteristic
-            .0
-            .handle
-            .read()
-            .map_err(|_| anyhow::anyhow!("Failed to read Characteristic handle"))?
-            .ok_or(anyhow::anyhow!(
-                "Characteristic handle is None, likely Characteristic was not initialized properly"
-            ))?;
+        // let characteristic_handle = characteristic
+        //     .0
+        //     .handle
+        //     .read()
+        //     .map_err(|_| anyhow::anyhow!("Failed to read Characteristic handle"))?
+        //     .ok_or(anyhow::anyhow!(
+        //         "Characteristic handle is None, likely Characteristic was not initialized properly"
+        //     ))?;
 
         // if self
         //     .0
         //     .characteristics
         //     .write()
         //     .map_err(|_| anyhow::anyhow!("Failed to acquire write lock on Gatts services"))?
-        //     .insert(characteristic_handle, characteristic.0.clone())
+        //     .insert(characteristic_handle, characteristic.0.a)
         //     .is_some()
         // {
         //     return Err(anyhow::anyhow!(
@@ -167,7 +166,8 @@ impl Service {
         //     ));
         // }
 
-        Ok(characteristic)
+        // Ok(characteristic)
+        todo!()
     }
 
     pub fn start(&self) -> anyhow::Result<()> {

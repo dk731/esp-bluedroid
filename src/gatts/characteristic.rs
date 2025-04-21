@@ -3,20 +3,17 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use crossbeam_channel::{bounded, Receiver, Sender};
-use enumset::{enum_set, EnumSet};
+use crossbeam_channel::bounded;
+use enumset::EnumSet;
 use esp_idf_svc::bt::{
-    ble::gatt::{
-        AutoResponse, GattCharacteristic, GattDescriptor, GattStatus, Handle, Permission, Property,
-    },
+    ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
     BtUuid,
 };
-use serde::{Deserialize, Serialize};
 
 use super::{
-    attribute::{Attribute, AttributeInner, AttributeUpdate, SerializableAttribute},
+    attribute::{Attribute, AttributeInner, AttributeUpdate},
     event::GattsEventMessage,
-    service::{Service, ServiceInner},
+    service::ServiceInner,
     GattsEvent,
 };
 
@@ -89,25 +86,17 @@ pub struct Characteristic<T: Attribute>(
 
 pub struct CharacteristicInner<T: Attribute> {
     pub service: RwLock<Weak<ServiceInner>>,
-    // value: RwLock<Arc<T>>,
     pub config: CharacteristicConfig,
-    pub handle: RwLock<Option<Handle>>,
 
     attribute: AttributeInner<T>,
-    // attribute: dyn TypedAttribute,
-    // updates_tx: Sender<CharacteristicUpdate<T>>,
-    // pub updates_rx: Receiver<CharacteristicUpdate<T>>,
 }
 
 impl<T: Attribute> Characteristic<T> {
     pub fn new(config: CharacteristicConfig, value: T) -> Self {
         let characterstic = CharacteristicInner {
             service: RwLock::new(Weak::new()),
-            handle: RwLock::new(None),
             config,
-            // attribute: RwLock::new(AttributeInner::new(Arc::new(value))),
-            // value: RwLock::new(Arc::new(value)),
-            attribute: todo!(),
+            attribute: AttributeInner::new(value),
         };
 
         let characterstic = Self(Arc::new(characterstic), std::marker::PhantomData);
@@ -215,11 +204,7 @@ impl<T: Attribute> Characteristic<T> {
                     ));
                 }
 
-                self.0
-                    .handle
-                    .write()
-                    .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))?
-                    .replace(attr_handle);
+                self.0.attribute.set_handle(attr_handle)?;
 
                 Ok(())
             }
@@ -240,16 +225,17 @@ impl<T: Attribute> Characteristic<T> {
 impl<T: Attribute> CharacteristicInner<T> {
     fn handle_value_update(&self, update: AttributeUpdate<T>) -> anyhow::Result<()> {
         // let (tx, rx) = bounded(1);
-        let callback_key = discriminant(&GattsEvent::Confirm {
-            status: GattStatus::Busy,
-            conn_id: 0,
-            handle: 0,
-            value: None,
-        });
+        // let callback_key = discriminant(&GattsEvent::Confirm {
+        //     status: GattStatus::Busy,
+        //     conn_id: 0,
+        //     handle: 0,
+        //     value: None,
+        // });
 
-        // self.updates_tx
-        //     .send(update.clone())
-        //     .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
+        // // self.attribute
+        // //     .updates_rx
+        // //     .send(update.clone())
+        // //     .map_err(|_| anyhow::anyhow!("Failed to send characteristic update"))?;
 
         // let service = self.get_service()?;
         // let app = service.get_app()?;
