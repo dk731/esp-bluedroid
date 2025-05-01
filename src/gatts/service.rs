@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock, Weak},
 };
 
-use crossbeam_channel::bounded;
+use crossbeam_channel::unbounded;
 use esp_idf_svc::bt::{
     ble::gatt::{GattId, GattServiceId, GattStatus, Handle},
     BtUuid,
@@ -13,7 +13,7 @@ use esp_idf_svc::bt::{
 
 use super::{
     app::AppInner,
-    attribute::{AnyAttribute, Attribute},
+    attribute::Attribute,
     characteristic::{Characteristic, CharacteristicAttribute},
     GattsEvent, GattsEventMessage,
 };
@@ -64,7 +64,7 @@ impl Service {
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write Gatt interface"))? = Arc::downgrade(app);
 
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
         let callback_key = discriminant(&GattsEvent::ServiceCreated {
             status: GattStatus::Busy,
             service_handle: 0,
@@ -161,7 +161,7 @@ impl Service {
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
         let callback_key = discriminant(&GattsEvent::ServiceStarted {
             status: GattStatus::Busy,
             service_handle: 0,
@@ -208,7 +208,7 @@ impl Service {
     }
 
     pub fn stop(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
         let callback_key = discriminant(&GattsEvent::ServiceStopped {
             status: GattStatus::Busy,
             service_handle: 0,

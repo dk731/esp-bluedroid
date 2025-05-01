@@ -7,20 +7,14 @@ use std::{
     time::Duration,
 };
 
-use crossbeam_channel::{bounded, Sender};
-use esp_idf_svc::{
-    bt::{
-        ble::gap::{AdvConfiguration, AppearanceCategory, EspBleGap},
-        BtStatus, BtUuid,
-    },
-    hal::task::thread,
+use crossbeam_channel::{unbounded, Sender};
+use esp_idf_svc::bt::{
+    ble::gap::{AdvConfiguration, AppearanceCategory, EspBleGap},
+    BtStatus, BtUuid,
 };
 use event::GapEvent;
 
-use crate::{
-    ble::ExtBtDriver,
-    gatts::{connection::ConnectionStatus, GattsInner},
-};
+use crate::{ble::ExtBtDriver, gatts::GattsInner};
 use esp_idf_svc as svc;
 
 #[derive(Debug, Clone)]
@@ -136,9 +130,11 @@ impl Gap {
         let gap = self.0.clone();
         std::thread::spawn(move || {
             log::info!("Starting auto advertising thread");
-            let connection_rx = gap.gatts.upgrade().unwrap().connections_rx.clone();
+            let connection_rx = gap.gatts.upgrade().unwrap().gap_connections_rx.clone();
 
-            for event in connection_rx.iter() {
+            for event in connection_rx {
+                log::info!("Received event in auto advertising: {:?}", event);
+
                 if gap.gatts.upgrade().is_none() {
                     log::error!("Gatts is no longer available, stopping auto advertising thread");
                     break;
@@ -146,7 +142,7 @@ impl Gap {
 
                 match event {
                     _ => {
-                        let Ok(need_advertise) = gap.check_start_advertising() else {
+                        let Ok(need_advertise) = gap.check_if_need_start_advertising() else {
                             log::error!("Failed to check start advertising");
                             continue;
                         };
@@ -162,6 +158,8 @@ impl Gap {
                     }
                 }
             }
+
+            log::info!("Auto advertising thread stopped");
         });
 
         Ok(())
@@ -211,7 +209,7 @@ impl Gap {
 }
 
 impl GapInner {
-    fn check_start_advertising(&self) -> anyhow::Result<bool> {
+    fn check_if_need_start_advertising(&self) -> anyhow::Result<bool> {
         let gatts = self
             .gatts
             .upgrade()
@@ -232,11 +230,17 @@ impl GapInner {
             .max_connections
             .ok_or(anyhow::anyhow!("Max connections not set in gap config"))?;
 
-        Ok(max_connection <= current_connection)
+        log::info!(
+            "Current connections: {}, Max connections: {}",
+            current_connection,
+            max_connection
+        );
+
+        Ok(current_connection < max_connection)
     }
 
     pub fn start_advertising(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
         self.gap_events
             .write()
             .map_err(|err| anyhow::anyhow!("Failed to write gap_events: {:?}", err))?

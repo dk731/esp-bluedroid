@@ -86,38 +86,38 @@ fn run_ble_example() -> anyhow::Result<()> {
                     writable: true,
                 },
             )),
-            Arc::new(Descriptor::new(
-                U32Attr(0),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(124),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                U8Attr(0),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(125),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                StringAttr("Hello world".to_string()),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(126),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                BytesAttr(vec![1, 2, 3, 5, 6]),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(127),
-                    readable: true,
-                    writable: true,
-                },
-            )),
+            // Arc::new(Descriptor::new(
+            //     U32Attr(0),
+            //     DescriptorConfig {
+            //         uuid: BtUuid::uuid128(124),
+            //         readable: true,
+            //         writable: true,
+            //     },
+            // )),
+            // Arc::new(Descriptor::new(
+            //     U8Attr(0),
+            //     DescriptorConfig {
+            //         uuid: BtUuid::uuid128(125),
+            //         readable: true,
+            //         writable: true,
+            //     },
+            // )),
+            // Arc::new(Descriptor::new(
+            //     StringAttr("Hello world".to_string()),
+            //     DescriptorConfig {
+            //         uuid: BtUuid::uuid128(126),
+            //         readable: true,
+            //         writable: true,
+            //     },
+            // )),
+            // Arc::new(Descriptor::new(
+            //     BytesAttr(vec![1, 2, 3, 5, 6]),
+            //     DescriptorConfig {
+            //         uuid: BtUuid::uuid128(127),
+            //         readable: true,
+            //         writable: true,
+            //     },
+            // )),
         ]),
     ))?;
 
@@ -162,9 +162,14 @@ fn run_ble_example() -> anyhow::Result<()> {
     })?;
     ble.gap.start_advertising()?;
 
+    std::thread::spawn(|| loop {
+        log::info!("Hello from another thread");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    });
+
     let mut i = 0;
     loop {
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_secs(5));
 
         char1.update_value(U16Attr(i))?;
         i += 1;

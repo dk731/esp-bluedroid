@@ -16,7 +16,7 @@ use app::{App, AppInner};
 
 use attribute::AnyAttribute;
 use connection::ConnectionStatus;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use esp_idf_svc::{
     bt::{
         ble::gatt::{
@@ -56,8 +56,8 @@ pub struct GattsInner {
 
 impl Gatts {
     pub fn new(bt: ExtBtDriver) -> anyhow::Result<Self> {
-        let (connections_tx, connections_rx) = bounded(1);
-        let (gap_connections_tx, gap_connections_rx) = bounded(1);
+        let (connections_tx, connections_rx) = unbounded();
+        let (gap_connections_tx, gap_connections_rx) = unbounded();
 
         let gatts = EspGatts::new(bt)?;
         let gatts_inner = GattsInner {
@@ -81,7 +81,7 @@ impl Gatts {
     }
 
     fn configure_global_events(&self) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
 
         let mut gatt_events = self
             .0
@@ -234,7 +234,7 @@ impl GattsInner {
         status: GattStatus,
         response: Option<&GattResponse>,
     ) -> anyhow::Result<()> {
-        let (tx, rx) = bounded(1);
+        let (tx, rx) = unbounded();
         let callback_key = discriminant(&GattsEvent::ResponseComplete {
             status: GattStatus::Busy,
             handle: 0,
@@ -531,6 +531,7 @@ impl GattsInner {
 
                 let connection_status = ConnectionStatus::Disconnected(connection);
 
+                log::info!("Sending disconnect event: {:?}", connection_status);
                 self.gap_connections_tx.send(connection_status.clone())?;
                 self.connections_tx.send(connection_status)?;
 
