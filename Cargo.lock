@@ -784,6 +784,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "general"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "esp-bluedroid",
+ "esp-idf-svc",
+ "log",
+ "serde",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

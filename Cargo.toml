@@ -8,13 +8,19 @@ rust-version = "1.85"
 
 [workspace]
 members = [
-    ".", "crates/esp-bluedroid-cli",
-    "crates/esp-bluedroid-logger"
-, "crates/esp-bluedroid-ota"]
+    ".",
+    "crates/esp-bluedroid-cli",
+    "crates/esp-bluedroid-logger",
+    "crates/esp-bluedroid-ota",
+    "examples/general"
+]
 
 [[bin]]
+# name = "esp-bluedroid"
+# harness = false # do not use the built in cargo test harness -> resolve rust-analyzer errors
 name = "esp-bluedroid"
-harness = false # do not use the built in cargo test harness -> resolve rust-analyzer errors
+path = "examples/general/src/main.rs"
+harness = false
 
 [profile.release]
 opt-level = "s"
