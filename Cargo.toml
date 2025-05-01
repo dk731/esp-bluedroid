@@ -12,8 +12,8 @@ members = [
     "crates/esp-bluedroid-cli",
     "crates/esp-bluedroid-logger",
     "crates/esp-bluedroid-ota",
+    "example-app",
 ]
-
 
 [profile.release]
 opt-level = "s"

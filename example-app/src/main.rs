@@ -6,8 +6,8 @@ use esp_bluedroid::{
     gatts::{
         app::App,
         attribute::{
-            defaults::{BytesAttr, StringAttr, U16Attr, U32Attr, U8Attr},
             AttributeUpdate,
+            defaults::{BytesAttr, StringAttr, U8Attr, U16Attr, U32Attr},
         },
         characteristic::{Characteristic, CharacteristicConfig},
         descriptor::{Descriptor, DescriptorConfig},
@@ -15,15 +15,16 @@ use esp_bluedroid::{
     },
     svc::{
         bt::{
+            BtUuid,
             ble::{
                 gap::AppearanceCategory,
                 gatt::{GattId, GattServiceId},
             },
-            BtUuid,
         },
         hal::prelude::Peripherals,
     },
 };
+use esp_bluedroid_logger::BleLoggerService;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,9 +56,9 @@ fn run_ble_example() -> anyhow::Result<()> {
     let ble = ble::Ble::new(peripherals.modem)?;
 
     let app = ble.gatts.register_app(&App::new(0))?;
-    // let logger_service = BleLoggerService::new();
+    let logger_service = BleLoggerService::new();
 
-    // app.register_service(logger_service.service)?;
+    app.register_service(&logger_service.service)?;
 
     let service = app.register_service(&Service::new(
         GattServiceId {
