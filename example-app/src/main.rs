@@ -6,23 +6,23 @@ use esp_bluedroid::{
     gatts::{
         app::App,
         attribute::{
+            defaults::{BytesAttr, StringAttr, U16Attr, U32Attr, U8Attr},
             AttributeUpdate,
-            defaults::{BytesAttr, StringAttr, U8Attr, U16Attr, U32Attr},
         },
         characteristic::{Characteristic, CharacteristicConfig},
         descriptor::{Descriptor, DescriptorConfig},
         service::Service,
     },
-};
-use esp_idf_svc::{
-    bt::{
-        BtUuid,
-        ble::{
-            gap::AppearanceCategory,
-            gatt::{GattId, GattServiceId},
+    svc::{
+        bt::{
+            ble::{
+                gap::AppearanceCategory,
+                gatt::{GattId, GattServiceId},
+            },
+            BtUuid,
         },
+        hal::prelude::Peripherals,
     },
-    hal::prelude::Peripherals,
 };
 use serde::{Deserialize, Serialize};
 
@@ -42,8 +42,8 @@ struct CoolNestedChar {
 }
 
 fn main() {
-    esp_idf_svc::sys::link_patches();
-    esp_idf_svc::log::EspLogger::initialize_default();
+    esp_bluedroid::svc::sys::link_patches();
+    esp_bluedroid::svc::log::EspLogger::initialize_default();
 
     if let Err(e) = run_ble_example() {
         log::error!("Error: {:?}", e);
@@ -55,6 +55,10 @@ fn run_ble_example() -> anyhow::Result<()> {
     let ble = ble::Ble::new(peripherals.modem)?;
 
     let app = ble.gatts.register_app(&App::new(0))?;
+    // let logger_service = BleLoggerService::new();
+
+    // app.register_service(logger_service.service)?;
+
     let service = app.register_service(&Service::new(
         GattServiceId {
             id: GattId {

@@ -1,19 +1,9 @@
 [package]
-name = "esp-bluedroid"
+name = "general"
 version = "0.1.0"
-authors = ["Demid Kaidalov <demid.kaidalov@gmail.com>"]
 edition = "2024"
 resolver = "2"
 rust-version = "1.85"
-
-[workspace]
-members = [
-    ".",
-    "crates/esp-bluedroid-cli",
-    "crates/esp-bluedroid-logger",
-    "crates/esp-bluedroid-ota",
-]
-
 
 [profile.release]
 opt-level = "s"
@@ -28,15 +18,20 @@ default = []
 experimental = ["esp-idf-svc/experimental"]
 
 [dependencies]
-log = "0.4"
+esp-bluedroid = { path = ".." }
+esp-bluedroid-logger = { path = "../crates/esp-bluedroid-logger" }
 esp-idf-svc = { version = "0.51", features = [
     "critical-section",
     "embassy-time-driver",
     "embassy-sync",
     "experimental",
 ] }
-anyhow = "1.0.97"
-enumset = "1.1.5"
 serde = "1.0.219"
-bincode = { version = "2.0.1", features = ["serde"] }
-crossbeam-channel = "0.5.15"
+log = "0.4"
+anyhow = "1.0.97"
+
+
+[build-dependencies]
+embuild = "0.33"
+
+[workspace]
