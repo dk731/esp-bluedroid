@@ -6,6 +6,12 @@ edition = "2021"
 resolver = "2"
 rust-version = "1.85"
 
+[workspace]
+members = [
+    ".",
+    "crates/esp-bluedroid-logger"
+, "crates/esp-bluedroid-ota"]
+
 [[bin]]
 name = "esp-bluedroid"
 harness = false # do not use the built in cargo test harness -> resolve rust-analyzer errors

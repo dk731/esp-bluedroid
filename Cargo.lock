@@ -632,6 +632,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-bluedroid-logger"
+version = "0.1.0"
+
+[[package]]
+name = "esp-bluedroid-ota"
+version = "0.1.0"
+
+[[package]]
 name = "esp-idf-hal"
 version = "0.45.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
