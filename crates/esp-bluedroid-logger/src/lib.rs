@@ -23,27 +23,29 @@ unsafe extern "C" {
     fn vsprintf(str: *mut c_char, format: *const c_char, args: va_list) -> c_int;
 }
 
+// struct LoggerQueue {
+//     buffer: Arc<ArrayQueue<u8>>,
+//     notify_sender: crossbeam_channel::Sender<()>,
+//     rx_characteristic: Arc<Characteristic<BytesAttr>>,
+// }
+
 unsafe extern "C" fn custom_logger_middleware(format: *const c_char, args: va_list) -> c_int {
     const BUF_SIZE: usize = 1024;
-    let mut buffer = [0u8; BUF_SIZE];
+    let mut buffer: [u8; 1024] = [0u8; BUF_SIZE];
 
     let result = unsafe { vsprintf(buffer.as_mut_ptr() as *mut c_char, format, args) };
     if result < 0 {
-        log::error!("Failed to format log message");
+        // log::error!("Failed to format log message");
         return result;
     }
 
-    let c_str = unsafe { CStr::from_ptr(buffer.as_ptr() as *const c_char) };
-    let bytes = c_str.to_bytes().to_vec();
+    // let
 
-    // Your custom logging implementation here
-    // For example, you might want to format the message and send it over BLE
+    // let Ok(original_message) = String::try_from(&buffer[..result as usize]) else {
+    //     //
+    // };
 
-    // This is a placeholder implementation that just passes through to the
-    // standard vprintf function from libc
-    // libc::vprintf(format, args)
-
-    bytes.len() as c_int
+    todo!()
 }
 
 impl BleLoggerService {
@@ -58,6 +60,8 @@ impl BleLoggerService {
             },
             10,
         );
+
+        log::info!("Test");
 
         Self { service }
     }
@@ -94,7 +98,7 @@ impl BleLoggerService {
         self.service.register_characteristic(&tx_characteristic)?;
         self.service.register_characteristic(&rx_characteristic)?;
 
-        let _original_logger = unsafe { esp_log_set_vprintf(Some(custom_logger_middleware)) };
+        let original_logger = unsafe { esp_log_set_vprintf(Some(custom_logger_middleware)) };
 
         Ok(())
     }

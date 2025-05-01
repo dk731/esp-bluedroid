@@ -8,4 +8,4 @@ esp-bluedroid = { path = "../.." }
 serde = "1.0.219"
 log = "0.4"
 anyhow = "1.0.97"
-libc = "0.2.172"
+ringbuf = "0.4.8"

@@ -59,6 +59,7 @@ fn run_ble_example() -> anyhow::Result<()> {
     let logger_service = BleLoggerService::new();
 
     app.register_service(&logger_service.service)?;
+    logger_service.register()?;
 
     let service = app.register_service(&Service::new(
         GattServiceId {
