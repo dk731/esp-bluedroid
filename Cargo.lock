@@ -632,6 +632,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-bluedroid-cli"
+version = "0.1.0"
+
+[[package]]
 name = "esp-bluedroid-logger"
 version = "0.1.0"
 

@@ -8,7 +8,7 @@ rust-version = "1.85"
 
 [workspace]
 members = [
-    ".",
+    ".", "crates/esp-bluedroid-cli",
     "crates/esp-bluedroid-logger"
 , "crates/esp-bluedroid-ota"]
 
