@@ -17,3 +17,6 @@ esp-idf-svc = { version = "0.51", features = ["experimental"] }
 serde = "1.0.219"
 log = "0.4"
 anyhow = "1.0.97"
+
+[build-dependencies]
+embuild = "0.33"

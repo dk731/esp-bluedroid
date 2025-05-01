@@ -1,5 +1,10 @@
-use std::ffi::{CStr, c_char, c_int};
+use std::{
+    ffi::{CStr, c_char, c_int},
+    sync::{Arc, Mutex},
+};
 
+use anyhow::bail;
+use crossbeam::{channel::Sender, queue::ArrayQueue};
 use esp_bluedroid::{
     gatts::{
         attribute::defaults::BytesAttr,
@@ -11,9 +16,10 @@ use esp_bluedroid::{
             BtUuid,
             ble::gatt::{GattId, GattServiceId},
         },
-        sys::{esp_log_set_vprintf, va_list},
+        sys::{esp_log_set_vprintf, va_list, vprintf_like_t},
     },
 };
+use lazy_static::lazy_static;
 
 pub struct BleLoggerService {
     pub service: Service,
@@ -23,29 +29,43 @@ unsafe extern "C" {
     fn vsprintf(str: *mut c_char, format: *const c_char, args: va_list) -> c_int;
 }
 
-// struct LoggerQueue {
-//     buffer: Arc<ArrayQueue<u8>>,
-//     notify_sender: crossbeam_channel::Sender<()>,
-//     rx_characteristic: Arc<Characteristic<BytesAttr>>,
-// }
+lazy_static! {
+    static ref LOGGER_QUEUE: Arc<Mutex<Option<LoggerQueue>>> = Arc::new(Mutex::new(None));
+}
+
+struct LoggerQueue {
+    buffer: Arc<ArrayQueue<u8>>,
+    notify_sender: Sender<()>,
+    original_logger: vprintf_like_t,
+}
 
 unsafe extern "C" fn custom_logger_middleware(format: *const c_char, args: va_list) -> c_int {
     const BUF_SIZE: usize = 1024;
     let mut buffer: [u8; 1024] = [0u8; BUF_SIZE];
 
-    let result = unsafe { vsprintf(buffer.as_mut_ptr() as *mut c_char, format, args) };
-    if result < 0 {
+    let message_length = unsafe { vsprintf(buffer.as_mut_ptr() as *mut c_char, format, args) };
+    if message_length < 0 {
         // log::error!("Failed to format log message");
-        return result;
+        return message_length;
     }
 
-    // let
+    let Ok(logger_queue) = LOGGER_QUEUE.lock() else {
+        return -1;
+    };
 
-    // let Ok(original_message) = String::try_from(&buffer[..result as usize]) else {
-    //     //
-    // };
+    let Some(logger_queue) = logger_queue.as_ref() else {
+        return -1;
+    };
 
-    todo!()
+    for byte in &buffer[..message_length as usize] {
+        logger_queue.buffer.force_push(*byte);
+    }
+    logger_queue.notify_sender.send(()).ok();
+
+    match logger_queue.original_logger {
+        Some(original_logger) => unsafe { original_logger(format, args) },
+        None => 0,
+    }
 }
 
 impl BleLoggerService {
@@ -60,8 +80,6 @@ impl BleLoggerService {
             },
             10,
         );
-
-        log::info!("Test");
 
         Self { service }
     }
@@ -98,7 +116,45 @@ impl BleLoggerService {
         self.service.register_characteristic(&tx_characteristic)?;
         self.service.register_characteristic(&rx_characteristic)?;
 
+        let (tx_logs_messages, rx_logs_messages) = crossbeam::channel::unbounded();
+        let shared_buffer = Arc::new(ArrayQueue::new(1024));
         let original_logger = unsafe { esp_log_set_vprintf(Some(custom_logger_middleware)) };
+
+        let queue = LoggerQueue {
+            buffer: shared_buffer.clone(),
+            notify_sender: tx_logs_messages,
+            original_logger,
+        };
+        LOGGER_QUEUE
+            .lock()
+            .map_err(|err| anyhow::anyhow!("Was not able to lock static LOGGER_QUEUE: {:?}", err))?
+            .replace(queue);
+
+        std::thread::spawn(move || {
+            for _ in rx_logs_messages.iter() {
+                let mut message = vec![];
+                while let Some(byte) = shared_buffer.pop() {
+                    message.push(byte);
+                }
+
+                if message.is_empty() {
+                    continue;
+                }
+
+                let errors: Vec<anyhow::Error> = message
+                    .chunks(20)
+                    .filter_map(|chunk| {
+                        rx_characteristic
+                            .update_value(BytesAttr(chunk.to_vec()))
+                            .err()
+                    })
+                    .collect();
+
+                if !errors.is_empty() {
+                    log::error!("Failed to send log message: {:?}", errors);
+                }
+            }
+        });
 
         Ok(())
     }
