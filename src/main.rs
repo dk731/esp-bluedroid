@@ -162,11 +162,6 @@ fn run_ble_example() -> anyhow::Result<()> {
     })?;
     ble.gap.start_advertising()?;
 
-    std::thread::spawn(|| loop {
-        log::info!("Hello from another thread");
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    });
-
     let mut i = 0;
     loop {
         std::thread::sleep(std::time::Duration::from_secs(5));
