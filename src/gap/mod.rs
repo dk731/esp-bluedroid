@@ -2,15 +2,15 @@ mod event;
 
 use std::{
     collections::HashMap,
-    mem::{discriminant, Discriminant},
+    mem::{Discriminant, discriminant},
     sync::{Arc, RwLock, Weak},
     time::Duration,
 };
 
-use crossbeam_channel::{unbounded, Sender};
+use crossbeam_channel::{Sender, unbounded};
 use esp_idf_svc::bt::{
-    ble::gap::{AdvConfiguration, AppearanceCategory, EspBleGap},
     BtStatus, BtUuid,
+    ble::gap::{AdvConfiguration, AppearanceCategory, EspBleGap},
 };
 use event::GapEvent;
 
@@ -104,12 +104,12 @@ impl Gap {
     pub fn init_callbacks(&self) -> anyhow::Result<()> {
         let callback_channels_map = Arc::downgrade(&self.0.gap_events);
         self.0.gap.subscribe(move |e| {
+            log::info!("Received event {:?}", e);
+
             let Some(callback_channels) = callback_channels_map.upgrade() else {
                 log::error!("Failed to upgrade Gap events map");
                 return;
             };
-
-            log::info!("Received event {:?}", e);
 
             let Ok(map_lock) = callback_channels.read() else {
                 log::error!("Failed to acquire write lock for events map");
@@ -129,12 +129,9 @@ impl Gap {
 
         let gap = self.0.clone();
         std::thread::spawn(move || {
-            log::info!("Starting auto advertising thread");
             let connection_rx = gap.gatts.upgrade().unwrap().gap_connections_rx.clone();
 
             for event in connection_rx {
-                log::info!("Received event in auto advertising: {:?}", event);
-
                 if gap.gatts.upgrade().is_none() {
                     log::error!("Gatts is no longer available, stopping auto advertising thread");
                     break;
@@ -148,18 +145,13 @@ impl Gap {
                         };
 
                         if need_advertise {
-                            log::info!("Starting advertising due to new connection");
                             if let Err(err) = gap.start_advertising() {
                                 log::error!("Failed to start advertising: {:?}", err);
                             }
-                        } else {
-                            log::info!("No need to start advertising, max connections reached");
                         }
                     }
                 }
             }
-
-            log::info!("Auto advertising thread stopped");
         });
 
         Ok(())
@@ -229,12 +221,6 @@ impl GapInner {
         let max_connection = config
             .max_connections
             .ok_or(anyhow::anyhow!("Max connections not set in gap config"))?;
-
-        log::info!(
-            "Current connections: {}, Max connections: {}",
-            current_connection,
-            max_connection
-        );
 
         Ok(current_connection < max_connection)
     }

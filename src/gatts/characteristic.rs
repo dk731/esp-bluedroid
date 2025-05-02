@@ -7,19 +7,19 @@ use std::{
 use crossbeam_channel::bounded;
 use enumset::EnumSet;
 use esp_idf_svc::bt::{
-    ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
     BtUuid,
+    ble::gatt::{AutoResponse, GattCharacteristic, GattStatus, Handle, Permission, Property},
 };
 
 use super::{
+    GattsEvent,
     attribute::{
-        defaults::{StringAttr, U16Attr},
         AnyAttribute, Attribute, AttributeInner,
+        defaults::{StringAttr, U16Attr},
     },
     descriptor::{Descriptor, DescriptorAttribute, DescriptorConfig, DescritporId},
     event::GattsEventMessage,
     service::{self, ServiceInner},
-    GattsEvent,
 };
 
 pub struct CharacteristicConfig {

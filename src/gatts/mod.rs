@@ -8,7 +8,7 @@ pub mod service;
 
 use std::{
     collections::HashMap,
-    mem::{discriminant, Discriminant},
+    mem::{Discriminant, discriminant},
     sync::{Arc, RwLock},
 };
 
@@ -16,14 +16,14 @@ use app::{App, AppInner};
 
 use attribute::AnyAttribute;
 use connection::ConnectionStatus;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, unbounded};
 use esp_idf_svc::{
     bt::{
-        ble::gatt::{
-            server::{ConnectionId, EspGatts, TransferId},
-            GattConnParams, GattConnReason, GattInterface, GattResponse, GattStatus, Handle,
-        },
         BdAddr,
+        ble::gatt::{
+            GattConnParams, GattConnReason, GattInterface, GattResponse, GattStatus, Handle,
+            server::{ConnectionId, EspGatts, TransferId},
+        },
     },
     sys::ESP_GATT_MAX_ATTR_LEN,
 };

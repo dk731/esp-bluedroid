@@ -1,9 +1,12 @@
 use std::{
-    ffi::{CStr, c_char, c_int},
-    sync::{Arc, Mutex},
+    ffi::CStr,
+    ops::Add,
+    sync::{
+        Arc, Mutex, RwLock,
+        atomic::{AtomicI32, AtomicUsize},
+    },
 };
 
-use anyhow::bail;
 use crossbeam::{channel::Sender, queue::ArrayQueue};
 use esp_bluedroid::{
     gatts::{
@@ -16,56 +19,46 @@ use esp_bluedroid::{
             BtUuid,
             ble::gatt::{GattId, GattServiceId},
         },
-        sys::{esp_log_set_vprintf, va_list, vprintf_like_t},
+        log::EspLogger,
+        sys::{esp_log_system_timestamp, esp_log_timestamp},
     },
 };
 use lazy_static::lazy_static;
+use ringbuf::{
+    HeapRb, SharedRb,
+    storage::Heap,
+    traits::{Consumer, Observer, RingBuffer},
+};
+
+static ESP_LOGGER: EspLogger = EspLogger::new();
+static BLE_LOGGER: BleLogger = BleLogger();
 
 pub struct BleLoggerService {
     pub service: Service,
 }
 
-unsafe extern "C" {
-    fn vsprintf(str: *mut c_char, format: *const c_char, args: va_list) -> c_int;
+lazy_static! {
+    static ref LOGGER_QUEUE: Arc<LoggerQueue> = Arc::new({
+        let (notify_sender, notify_receiver) = crossbeam::channel::unbounded();
+        LoggerQueue {
+            buffer: Mutex::new(HeapRb::new(1024)),
+            // buffer: ArrayQueue::new(1024),
+            notify_sender,
+            notify_receiver,
+        }
+    });
+    static ref QWE: Arc<Mutex<i32>> = Arc::new(Mutex::new(0));
+    static ref EWQ: Arc<Mutex<String>> = Arc::new(Mutex::new("empty ".to_string()));
+
 }
 
-lazy_static! {
-    static ref LOGGER_QUEUE: Arc<Mutex<Option<LoggerQueue>>> = Arc::new(Mutex::new(None));
-}
+static EEE: AtomicUsize = AtomicUsize::new(666);
 
 struct LoggerQueue {
-    buffer: Arc<ArrayQueue<u8>>,
+    buffer: Mutex<SharedRb<Heap<u8>>>,
+    // buffer: ArrayQueue<u8>,
     notify_sender: Sender<()>,
-    original_logger: vprintf_like_t,
-}
-
-unsafe extern "C" fn custom_logger_middleware(format: *const c_char, args: va_list) -> c_int {
-    const BUF_SIZE: usize = 1024;
-    let mut buffer: [u8; 1024] = [0u8; BUF_SIZE];
-
-    let message_length = unsafe { vsprintf(buffer.as_mut_ptr() as *mut c_char, format, args) };
-    if message_length < 0 {
-        // log::error!("Failed to format log message");
-        return message_length;
-    }
-
-    let Ok(logger_queue) = LOGGER_QUEUE.lock() else {
-        return -1;
-    };
-
-    let Some(logger_queue) = logger_queue.as_ref() else {
-        return -1;
-    };
-
-    for byte in &buffer[..message_length as usize] {
-        logger_queue.buffer.force_push(*byte);
-    }
-    logger_queue.notify_sender.send(()).ok();
-
-    match logger_queue.original_logger {
-        Some(original_logger) => unsafe { original_logger(format, args) },
-        None => 0,
-    }
+    notify_receiver: crossbeam::channel::Receiver<()>,
 }
 
 impl BleLoggerService {
@@ -76,12 +69,23 @@ impl BleLoggerService {
                     uuid: BtUuid::uuid128(0x6e400001_b5a3_f393_e0a9_e50e24dcca9e), // Nordic UART Service
                     inst_id: 0,
                 },
-                is_primary: false,
+                is_primary: true,
             },
             10,
         );
 
         Self { service }
+    }
+
+    pub fn logger(&self) -> &EspLogger {
+        &ESP_LOGGER
+    }
+
+    pub fn initialize_default(&self) -> anyhow::Result<()> {
+        log::set_logger(&BLE_LOGGER)?;
+        ESP_LOGGER.initialize();
+
+        Ok(())
     }
 
     pub fn register(&self) -> anyhow::Result<()> {
@@ -108,7 +112,7 @@ impl BleLoggerService {
                 writable: false,
                 broadcasted: false,
                 enable_notify: true,
-                description: Some("esp-bluedriod Logging".to_string()),
+                description: Some("esp-bluedriod-logger".to_string()),
             },
             None,
         );
@@ -116,26 +120,17 @@ impl BleLoggerService {
         self.service.register_characteristic(&tx_characteristic)?;
         self.service.register_characteristic(&rx_characteristic)?;
 
-        let (tx_logs_messages, rx_logs_messages) = crossbeam::channel::unbounded();
-        let shared_buffer = Arc::new(ArrayQueue::new(1024));
-        let original_logger = unsafe { esp_log_set_vprintf(Some(custom_logger_middleware)) };
-
-        let queue = LoggerQueue {
-            buffer: shared_buffer.clone(),
-            notify_sender: tx_logs_messages,
-            original_logger,
-        };
-        LOGGER_QUEUE
-            .lock()
-            .map_err(|err| anyhow::anyhow!("Was not able to lock static LOGGER_QUEUE: {:?}", err))?
-            .replace(queue);
-
         std::thread::spawn(move || {
-            for _ in rx_logs_messages.iter() {
-                let mut message = vec![];
-                while let Some(byte) = shared_buffer.pop() {
-                    message.push(byte);
-                }
+            let mut i = 0;
+            for _ in LOGGER_QUEUE.notify_receiver.iter() {
+                let Ok(mut buffer) = LOGGER_QUEUE.buffer.lock() else {
+                    log::error!("Failed to lock buffer");
+                    continue;
+                };
+                let mut message = vec![0x00; buffer.occupied_len()];
+                let read_size = buffer.pop_slice(&mut message);
+                drop(buffer);
+                // let message = vec![];
 
                 if message.is_empty() {
                     continue;
@@ -144,18 +139,77 @@ impl BleLoggerService {
                 let errors: Vec<anyhow::Error> = message
                     .chunks(20)
                     .filter_map(|chunk| {
+                        i += 1;
+                        EEE.store(i, std::sync::atomic::Ordering::Relaxed);
+
                         rx_characteristic
                             .update_value(BytesAttr(chunk.to_vec()))
                             .err()
                     })
                     .collect();
 
-                if !errors.is_empty() {
-                    log::error!("Failed to send log message: {:?}", errors);
-                }
+                // if !errors.is_empty() {
+                //     log::error!("Failed to send log message: {:?}", errors);
+                // }
+            }
+
+            log::info!("Sender thread: finished");
+        });
+
+        std::thread::spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+
+                // let current_len = LOGGER_QUEUE.buffer.lock().unwrap().occupied_len();
+                log::info!(
+                    "Sender thread, last send: {:?}, buffer len: {:?}",
+                    // current_len,
+                    EEE.load(std::sync::atomic::Ordering::Relaxed),
+                    0
+                );
             }
         });
 
         Ok(())
+    }
+}
+
+struct BleLogger();
+
+impl log::Log for BleLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        ESP_LOGGER.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record) {
+        ESP_LOGGER.log(record);
+
+        let metadata = record.metadata();
+        if self.enabled(metadata) {
+            let marker = "123";
+            let target = record.metadata().target();
+            let args = record.args();
+
+            let timestamp = if cfg!(esp_idf_log_timestamp_source_rtos) {
+                &unsafe { esp_log_timestamp() }.to_string()
+            } else if cfg!(esp_idf_log_timestamp_source_system) {
+                unsafe { CStr::from_ptr(esp_log_system_timestamp()).to_str().unwrap() }
+            } else {
+                ""
+            };
+
+            let log_message = format!("{} ({}) {}: {}\n", marker, timestamp, target, args);
+
+            LOGGER_QUEUE
+                .buffer
+                .lock()
+                .unwrap()
+                .push_slice_overwrite(log_message.as_bytes());
+            LOGGER_QUEUE.notify_sender.send(()).ok();
+        }
+    }
+
+    fn flush(&self) {
+        ESP_LOGGER.flush();
     }
 }

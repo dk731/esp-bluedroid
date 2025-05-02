@@ -104,18 +104,18 @@ impl<T: Attribute> AttributeInner<T> {
     }
 
     pub fn update(&self, new_value: Arc<T>) -> anyhow::Result<()> {
-        let old_value = self.get_value()?;
+        // let old_value = self.get_value()?;
         *self
             .value
             .write()
             .map_err(|_| anyhow::anyhow!("Failed to write attribute value"))? = new_value.clone();
 
-        self.updates_tx
-            .send(AttributeUpdate {
-                old: old_value,
-                new: new_value,
-            })
-            .map_err(|_| anyhow::anyhow!("Failed to send attribute update"))?;
+        // self.updates_tx
+        //     .send(AttributeUpdate {
+        //         old: old_value,
+        //         new: new_value,
+        //     })
+        //     .map_err(|_| anyhow::anyhow!("Failed to send attribute update"))?;
 
         Ok(())
     }
