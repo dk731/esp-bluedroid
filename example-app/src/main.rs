@@ -44,7 +44,7 @@ struct CoolNestedChar {
 
 fn main() {
     esp_bluedroid::svc::sys::link_patches();
-    // esp_bluedroid::svc::log::EspLogger::initialize_default();
+    esp_bluedroid::svc::log::EspLogger::initialize_default();
 
     if let Err(e) = run_ble_example() {
         log::error!("Error: {:?}", e);
@@ -52,9 +52,6 @@ fn main() {
 }
 
 fn run_ble_example() -> anyhow::Result<()> {
-    let logger_service = BleLoggerService::new();
-    logger_service.initialize_default()?;
-
     let peripherals = Peripherals::take()?;
     let ble = ble::Ble::new(peripherals.modem)?;
 
@@ -154,10 +151,6 @@ fn run_ble_example() -> anyhow::Result<()> {
             log::info!("Characteristic was update.\tOld: {:?}\tNew: {:?}", old, new);
         }
     });
-
-    app.register_service(&logger_service.service)?;
-    logger_service.register()?;
-    logger_service.service.start()?;
 
     service.start()?;
     ble.gap.set_config(GapConfig {
