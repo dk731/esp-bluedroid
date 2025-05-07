@@ -7,7 +7,7 @@ use esp_bluedroid::{
         app::App,
         attribute::{
             AttributeUpdate,
-            defaults::{BytesAttr, StringAttr, U8Attr, U16Attr, U32Attr},
+            defaults::{U16Attr, U32Attr},
         },
         characteristic::{Characteristic, CharacteristicConfig},
         descriptor::{Descriptor, DescriptorConfig},
@@ -16,15 +16,11 @@ use esp_bluedroid::{
     svc::{
         bt::{
             BtUuid,
-            ble::{
-                gap::AppearanceCategory,
-                gatt::{GattId, GattServiceId},
-            },
+            ble::gatt::{GattId, GattServiceId},
         },
         hal::prelude::Peripherals,
     },
 };
-use esp_bluedroid_logger::BleLoggerService;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,51 +75,17 @@ fn run_ble_example() -> anyhow::Result<()> {
             enable_notify: true,
             description: Some("Test characteristic".to_string()),
         },
-        Some(vec![
-            Arc::new(Descriptor::new(
-                U32Attr(777),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(123),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                U32Attr(0),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(124),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                U8Attr(0),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(125),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                StringAttr("Hello world".to_string()),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(126),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-            Arc::new(Descriptor::new(
-                BytesAttr(vec![1, 2, 3, 5, 6]),
-                DescriptorConfig {
-                    uuid: BtUuid::uuid128(127),
-                    readable: true,
-                    writable: true,
-                },
-            )),
-        ]),
+        Some(vec![Arc::new(Descriptor::new(
+            U32Attr(777),
+            DescriptorConfig {
+                uuid: BtUuid::uuid128(123),
+                readable: true,
+                writable: true,
+            },
+        ))]),
     ))?;
 
-    let char2 = service.register_characteristic(&Characteristic::new(
+    let _char2 = service.register_characteristic(&Characteristic::new(
         CoolNestedChar {
             bar: "Hello".to_string(),
             foo_bar: FooBar {
