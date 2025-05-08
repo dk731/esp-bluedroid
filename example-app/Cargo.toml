@@ -6,9 +6,10 @@ resolver = "2"
 rust-version = "1.85"
 
 [features]
-default = ["experimental", "esp-idf"]
+default = ["experimental", "esp-bluedroid"]
 esp-bluedroid = []
 esp-idf = []
+esp-hello-world = []
 
 experimental = ["esp-idf-svc/experimental"]
 
